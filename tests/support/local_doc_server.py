@@ -82,6 +82,13 @@ class LocalDocServer:
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
+            def handle_one_request(self) -> None:
+                try:
+                    super().handle_one_request()
+                except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError):
+                    # 客户端超时断开属于预期路径（用于超时测试）
+                    self.close_connection = True
+
             def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler 约定
                 route = routes.get(self.path)
                 if route is None:
