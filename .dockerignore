@@ -1,0 +1,14 @@
+.git
+.venv
+.python
+.uv-cache
+.pytest-tmp
+.scratch
+data
+evals/results
+__pycache__
+*.pyc
+*.db
+tests
+docs
+backups
