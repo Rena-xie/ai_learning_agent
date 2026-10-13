@@ -90,3 +90,20 @@ class HealthResponse(BaseModel):
     status: str
     database_ok: bool | None = None
     model_configured: bool | None = None
+
+
+class RunStatsResponse(BaseModel):
+    runs_total: int
+    runs_completed: int
+    runs_failed: int
+    success_rate: float | None = None
+    failure_rate: float | None = None
+    duration_ms_avg: int | None = None
+    duration_ms_p50: int | None = None
+    input_tokens_total: int
+    output_tokens_total: int
+    tool_calls_total: int
+    tool_calls_failed: int
+    document_fetches_total: int
+    document_fetch_success_rate: float | None = None
+    error_codes: dict[str, int] = Field(default_factory=dict)

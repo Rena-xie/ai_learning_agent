@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from learning_agent.domain.entities import DocumentContent, Section, UsageRecord
-from learning_agent.domain.enums import MessageRole, RunStatus
+from learning_agent.domain.enums import MessageRole, RunStatus, ToolCallStatus
 from learning_agent.domain.errors import (
     AppError,
     ErrorCategory,
@@ -452,6 +452,61 @@ class Repositories:
                     select(Message.id).where(Message.conversation_id == conversation_id)
                 ).all()
             )
+
+    def run_statistics(self) -> dict[str, object]:
+        """基础运行统计：成功率、耗时、工具失败、文档获取成功率与 Token 用量。"""
+
+        with self._session() as session:
+            runs = session.scalars(select(AgentRun)).all()
+            tool_calls = session.scalars(select(ToolCall)).all()
+
+        total = len(runs)
+        completed = [run for run in runs if run.status == RunStatus.COMPLETED.value]
+        failed = [run for run in runs if run.status == RunStatus.FAILED.value]
+        durations = sorted(
+            run.duration_ms for run in runs if run.duration_ms is not None
+        )
+        error_counts: dict[str, int] = {}
+        for run in runs:
+            if run.error_code:
+                error_counts[run.error_code] = error_counts.get(run.error_code, 0) + 1
+        fetch_calls = [
+            call for call in tool_calls if call.tool_name == "fetch_document"
+        ]
+        fetch_succeeded = [
+            call
+            for call in fetch_calls
+            if call.status == ToolCallStatus.SUCCEEDED.value
+        ]
+        return {
+            "runs_total": total,
+            "runs_completed": len(completed),
+            "runs_failed": len(failed),
+            "success_rate": round(len(completed) / total, 4) if total else None,
+            "failure_rate": round(len(failed) / total, 4) if total else None,
+            "duration_ms_avg": (
+                int(sum(durations) / len(durations)) if durations else None
+            ),
+            "duration_ms_p50": durations[len(durations) // 2] if durations else None,
+            "input_tokens_total": sum(run.input_tokens or 0 for run in runs),
+            "output_tokens_total": sum(run.output_tokens or 0 for run in runs),
+            "tool_calls_total": len(tool_calls),
+            "tool_calls_failed": sum(
+                1
+                for call in tool_calls
+                if call.status
+                in {ToolCallStatus.FAILED.value, ToolCallStatus.REJECTED.value}
+            ),
+            "document_fetches_total": len(fetch_calls),
+            "document_fetch_success_rate": (
+                round(len(fetch_succeeded) / len(fetch_calls), 4)
+                if fetch_calls
+                else None
+            ),
+            "error_codes": dict(
+                sorted(error_counts.items(), key=lambda item: (-item[1], item[0]))
+            ),
+        }
 
     def get_message_by_run(
         self,

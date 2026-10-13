@@ -13,7 +13,7 @@ from learning_agent.agent.context_builder import ContextBuilder
 from learning_agent.agent.runtime import AgentRuntime
 from learning_agent.agent.tool_registry import ToolRegistry
 from learning_agent.api.errors import register_exception_handlers
-from learning_agent.api.v1.routes import conversations, health, messages, runs
+from learning_agent.api.v1.routes import conversations, health, messages, runs, stats
 from learning_agent.application.chat_service import ChatService
 from learning_agent.config import Settings, get_settings
 from learning_agent.models.provider_adapter import OpenAICompatibleModelClient
@@ -118,6 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(conversations.router)
     app.include_router(messages.router)
     app.include_router(runs.router)
+    app.include_router(stats.router)
     if _WEB_DIR.is_dir():
         # 静态界面挂在最后，保证 /api 与 /health 路由优先匹配
         app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")
