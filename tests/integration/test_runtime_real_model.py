@@ -46,6 +46,7 @@ def build_stack(settings: Settings, repositories: Repositories, server: LocalDoc
         max_bytes=500_000,
         max_redirects=3,
         transport=server.transport(),
+        verify_peer_address=False,
     )
     tool = FetchDocumentTool(fetcher, max_document_chars=20_000)
     model = OpenAICompatibleModelClient(
