@@ -9,7 +9,11 @@ from datetime import UTC, datetime
 import httpx
 
 from learning_agent.domain.errors import DocumentToolError, ErrorCode, UrlPolicyError
-from learning_agent.tools.document.url_policy import UrlPolicy, ValidatedTarget
+from learning_agent.tools.document.url_policy import (
+    UrlPolicy,
+    ValidatedTarget,
+    is_public_ip,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +46,15 @@ class DocumentFetcher:
         max_bytes: int,
         max_redirects: int,
         transport: httpx.AsyncBaseTransport | None = None,
+        verify_peer_address: bool = True,
     ) -> None:
         self._policy = policy
         self._timeout_seconds = timeout_seconds
         self._max_bytes = max_bytes
         self._max_redirects = max_redirects
         self._transport = transport
+        # 连接建立后校验真实对端地址；只有本地可控测试服务器需要关闭
+        self._verify_peer_address = verify_peer_address
 
     async def fetch(self, url: str) -> FetchResult:
         target = self._policy.validate(url)
@@ -127,6 +134,7 @@ class DocumentFetcher:
     async def _read(
         self, response: httpx.Response, target: ValidatedTarget
     ) -> FetchResult:
+        self._verify_peer(response, target)
         if response.status_code >= 400:
             raise DocumentToolError(
                 ErrorCode.FETCH_HTTP_ERROR,
@@ -141,6 +149,13 @@ class DocumentFetcher:
                 ErrorCode.UNSUPPORTED_CONTENT_TYPE,
                 f"暂不支持该类型的内容（{content_type or '未知类型'}），"
                 "当前仅支持 HTML 文档",
+            )
+        declared = self._declared_length(response)
+        if declared is not None and declared > self._max_bytes:
+            raise DocumentToolError(
+                ErrorCode.DOCUMENT_TOO_LARGE,
+                "文档体积超过限制，已拒绝下载",
+                detail=f"content_length={declared} max={self._max_bytes}",
             )
         chunks: list[bytes] = []
         size = 0
@@ -167,3 +182,55 @@ class DocumentFetcher:
             byte_size=len(body),
             fetched_at=datetime.now(UTC),
         )
+
+    def _verify_peer(self, response: httpx.Response, target: ValidatedTarget) -> None:
+        """校验实际连接的对端地址（缓解解析与建连之间的时间差）。"""
+
+        if not self._verify_peer_address:
+            return
+        peer = _peer_ip(response)
+        if peer is None:
+            logger.warning(
+                "document_peer_unknown",
+                extra={"extra_fields": {"host": target.host}},
+            )
+            raise DocumentToolError(
+                ErrorCode.SSRF_TARGET_BLOCKED,
+                "无法确认文档服务器的真实地址，已拒绝本次访问",
+            )
+        if not is_public_ip(peer):
+            logger.warning(
+                "document_peer_blocked",
+                extra={"extra_fields": {"host": target.host}},
+            )
+            raise DocumentToolError(
+                ErrorCode.SSRF_TARGET_BLOCKED,
+                "文档服务器实际地址不是公网地址，已拒绝访问",
+                detail=f"peer_not_public host={target.host}",
+            )
+
+    def _declared_length(self, response: httpx.Response) -> int | None:
+        raw = response.headers.get("content-length")
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+
+
+def _peer_ip(response: httpx.Response) -> str | None:
+    """读取连接的底层对端 IP（httpcore 的 server_addr）。"""
+
+    stream = response.extensions.get("network_stream")
+    if stream is None:
+        return None
+    try:
+        value = stream.get_extra_info("server_addr")
+    except Exception:  # noqa: BLE001 - 取不到即按未知处理
+        return None
+    if isinstance(value, (tuple, list)) and value:
+        return str(value[0])
+    if isinstance(value, str) and value:
+        return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
+    return None

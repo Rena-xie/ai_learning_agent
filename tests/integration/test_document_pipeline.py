@@ -30,6 +30,8 @@ def make_fetcher(server: LocalDocServer, **overrides: object) -> DocumentFetcher
         "timeout_seconds": 5.0,
         "max_bytes": 200_000,
         "max_redirects": 3,
+        # 本地可控服务器位于 127.0.0.1；对端地址校验由单独用例验证
+        "verify_peer_address": False,
     }
     options.update(overrides)
     policy = UrlPolicy(
@@ -90,6 +92,7 @@ async def test_redirect_to_private_target_is_rejected(
         max_bytes=10_000,
         max_redirects=3,
         transport=local_server.transport(),
+        verify_peer_address=False,
     )
     await expect_error(
         ErrorCode.SSRF_TARGET_BLOCKED, fetcher, local_server.url("/private")
@@ -144,6 +147,35 @@ async def test_http_error_status_is_reported(local_server: LocalDocServer) -> No
         ErrorCode.FETCH_HTTP_ERROR,
         make_fetcher(local_server),
         local_server.url("/missing"),
+    )
+
+
+async def test_peer_address_check_blocks_local_endpoint(
+    local_server: LocalDocServer,
+) -> None:
+    """对端地址校验：真实连接落在非公网地址时拒绝（DNS rebinding 缓解）。"""
+
+    local_server.add_html("/guide", SAMPLE_HTML)
+    fetcher = make_fetcher(local_server, verify_peer_address=True)
+    error = await expect_error(
+        ErrorCode.SSRF_TARGET_BLOCKED, fetcher, local_server.url("/guide")
+    )
+    assert "公网" in error.message
+
+
+async def test_declared_content_length_is_prechecked(
+    local_server: LocalDocServer,
+) -> None:
+    """Content-Length 超过上限时在读取正文前拒绝。"""
+
+    local_server.add_route(
+        "/huge",
+        Route(body=SAMPLE_HTML.encode("utf-8"), declared_length=5_000_000),
+    )
+    await expect_error(
+        ErrorCode.DOCUMENT_TOO_LARGE,
+        make_fetcher(local_server, max_bytes=1_000),
+        local_server.url("/huge"),
     )
 
 

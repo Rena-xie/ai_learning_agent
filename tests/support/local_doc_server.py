@@ -34,6 +34,7 @@ class Route:
     body: bytes = b""
     headers: dict[str, str] = field(default_factory=dict)
     delay_seconds: float = 0.0
+    declared_length: int | None = None
 
 
 class LocalDocServer:
@@ -98,7 +99,12 @@ class LocalDocServer:
                     time.sleep(route.delay_seconds)
                 self.send_response(route.status)
                 self.send_header("Content-Type", route.content_type)
-                self.send_header("Content-Length", str(len(route.body)))
+                declared = (
+                    route.declared_length
+                    if route.declared_length is not None
+                    else len(route.body)
+                )
+                self.send_header("Content-Length", str(declared))
                 for key, value in route.headers.items():
                     self.send_header(key, value)
                 self.end_headers()
