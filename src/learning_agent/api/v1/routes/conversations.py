@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 
 from learning_agent.api.v1.schemas import (
     ConversationCreateRequest,
@@ -92,3 +92,20 @@ async def list_messages(
             )
         )
     return responses
+
+
+@router.delete("/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: str, repositories: RepositoriesDep
+) -> Response:
+    """删除对话及其按规则关联的数据（消息、运行、来源关系、文档快照）。"""
+
+    if repositories.get_conversation(conversation_id) is None:
+        raise AppError(ErrorCode.NOT_FOUND, "对话不存在或已被删除")
+    if repositories.get_active_run(conversation_id) is not None:
+        raise AppError(
+            ErrorCode.RUN_IN_PROGRESS,
+            "该对话有正在进行的运行，请等待运行结束后再删除",
+        )
+    repositories.delete_conversation(conversation_id)
+    return Response(status_code=204)
