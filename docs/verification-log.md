@@ -35,17 +35,27 @@
 
 ## Docker 部署
 
-**状态：待完成（环境阻塞）**。验收命令为：
+**状态：已完成**（2026-10-13，本机 Docker Desktop + 镜像站基础镜像）。
 
 ```bash
-docker compose build
+docker compose build --build-arg PYTHON_IMAGE=docker.m.daocloud.io/library/python:3.12-slim
 docker compose up -d
 curl http://127.0.0.1:8000/health/ready
+docker compose restart
+docker compose down
 ```
 
-阻塞原因：本机 Docker 守护进程配置的代理 `10.60.18.32:7897` 无响应，
-无法拉取基础镜像（`python:3.12-slim`）与 `ghcr.io/astral-sh/uv`。
-代理恢复后需按上述命令完成构建、启动、容器内真实问答与重启后数据持久化验证，并回填本节结果。
+| 项目 | 结果 |
+|---|---|
+| 构建 | 镜像 `ai-learning-agent:local` 构建成功（766MB）；基础镜像通过 build arg 指向镜像站，Dockerfile 默认仍是官方 `python:3.12-slim` |
+| 启动 | 容器 `Up (healthy)`；`/health/ready` 返回 `{"status":"ok","database_ok":true,"model_configured":true}` |
+| 容器内真实问答 | 提交真实文档 URL → `status=completed`、1 个来源、回答含 `[S1]`、运行 `completed`（工具 `fetch_document/succeeded`、tokens 2106+754） |
+| 重启持久化 | `docker compose restart` 后历史消息（user, assistant）与来源完整保留，说明 `./data` 卷生效 |
+| 备份/恢复 | 对容器使用的数据文件执行备份→恢复演练：完整性 `ok`，行数一致（对话 3、消息 8、运行 4、工具调用 3、快照 2、来源关联 2） |
+
+环境说明：本机 Docker 原配置的代理 `10.60.18.32:7897` 不可用（正确地址为 `127.0.0.1:7897`），
+且 `auth.docker.io` 存在 DNS 污染；改用镜像站基础镜像后构建成功。在中国网络环境下建议：
+代理指向 `http://127.0.0.1:7897`，或在 Docker Engine 配置 `registry-mirrors`。
 
 ## v1.0 验收清单对照（摘要）
 

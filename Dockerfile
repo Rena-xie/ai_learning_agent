@@ -1,5 +1,12 @@
-# 单阶段镜像：只包含运行时依赖，应用以非 root 用户启动
-FROM python:3.12-slim
+# 单阶段镜像：只包含运行时依赖，应用以非 root 用户启动。
+# 基础镜像与 uv 镜像可通过 build arg 覆盖（例如国内网络改用镜像站）：
+#   docker compose build --build-arg PYTHON_IMAGE=docker.m.daocloud.io/library/python:3.12-slim
+ARG PYTHON_IMAGE=python:3.12-slim
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.9.7
+
+FROM ${UV_IMAGE} AS uv
+
+FROM ${PYTHON_IMAGE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -9,7 +16,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # uv：固定版本，避免构建结果漂移
-COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /uvx /usr/local/bin/
+COPY --from=uv /uv /uvx /usr/local/bin/
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
@@ -17,7 +24,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY src ./src
+COPY README.md ./
 RUN uv sync --frozen --no-dev \
+    && rm -rf /root/.cache/uv \
     && useradd --create-home --uid 10001 appuser \
     && mkdir -p /app/data \
     && chown -R appuser:appuser /app

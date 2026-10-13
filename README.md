@@ -15,9 +15,9 @@
   并补充了[威胁模型](docs/threat-model.md)。
 - **阶段 4（可观测性与评估）：已完成**。运行统计接口、12 个固定评估案例与回归比较框架，
   真实模型基线结果见 `evals/results/`。
-- **阶段 5（可重复部署与交付验收）：进行中**。Dockerfile/Compose、CI 工作流、
-  [架构说明](docs/architecture.md)与[验收记录](docs/verification-log.md)已完成；
-  **容器构建与运行验证待完成**（本机 Docker 代理无响应，见验收记录）。
+- **阶段 5（可重复部署与交付验收）：已完成**。Dockerfile/Compose、CI 工作流、
+  [架构说明](docs/architecture.md)与[验收记录](docs/verification-log.md)均已交付；
+  容器构建、启动、容器内真实问答、重启持久化与备份恢复演练全部通过。
 
 ## 已实现能力
 
@@ -113,8 +113,12 @@ docker compose down
 ```
 
 密钥通过 `.env` 注入（`env_file`），不写入镜像；数据库文件落在 `./data` 卷内，
-容器重建后数据保留。**注意**：上述命令尚未在本机验证成功（Docker 守护进程代理不可用），
-验证状态与阻塞原因见 [docs/verification-log.md](docs/verification-log.md)。
+容器重建后数据保留（已实测：重启后历史对话与来源完整保留）。
+国内网络可改用镜像站基础镜像：
+
+```bash
+docker compose build --build-arg PYTHON_IMAGE=docker.m.daocloud.io/library/python:3.12-slim
+```
 
 ## 数据管理（命令均已实际执行验证）
 
