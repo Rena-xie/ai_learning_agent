@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from learning_agent.agent.context_builder import ContextBuilder
 from learning_agent.agent.runtime import AgentRuntime
@@ -24,6 +26,8 @@ from learning_agent.tools.document.tool import FetchDocumentTool
 from learning_agent.tools.document.url_policy import UrlPolicy
 
 logger = get_logger(__name__)
+
+_WEB_DIR = Path(__file__).resolve().parent / "web"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -108,4 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(conversations.router)
     app.include_router(messages.router)
     app.include_router(runs.router)
+    if _WEB_DIR.is_dir():
+        # 静态界面挂在最后，保证 /api 与 /health 路由优先匹配
+        app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")
     return app

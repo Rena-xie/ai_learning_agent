@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 学习助手</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h1>对话</h1>
+          <button id="new-conversation" type="button" class="primary">新建</button>
+        </div>
+        <ul id="conversation-list" class="conversation-list"></ul>
+      </aside>
+      <main class="chat">
+        <header class="chat-header">
+          <h2 id="conversation-title">未选择对话</h2>
+          <button id="delete-conversation" type="button" class="danger" disabled>
+            删除对话
+          </button>
+        </header>
+        <div id="message-list" class="message-list">
+          <p class="empty-hint">
+            发送一个受支持的官方技术文档 URL，例如
+            <code>https://fastapi.tiangolo.com/tutorial/</code>，我会基于文档内容讲解核心概念。
+          </p>
+        </div>
+        <div id="status-bar" class="status-bar" role="status" hidden></div>
+        <form id="composer" class="composer">
+          <textarea
+            id="message-input"
+            rows="3"
+            placeholder="粘贴官方文档 URL 并提出问题，例如：请解释这份文档里的依赖注入机制"
+          ></textarea>
+          <button id="send-button" type="submit" class="primary">发送</button>
+        </form>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
