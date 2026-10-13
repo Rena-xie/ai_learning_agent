@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -42,6 +43,8 @@ class LocalDocServer:
 
     def __init__(self) -> None:
         self.routes: dict[str, Route] = {}
+        self.post_routes: dict[str, list[Route]] = {}
+        self.requests: list[tuple[str, str]] = []
         handler = self._build_handler()
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.port: int = self._server.server_address[1]
@@ -62,6 +65,11 @@ class LocalDocServer:
     def add_route(self, path: str, route: Route) -> None:
         self.routes[path] = route
 
+    def add_post_sequence(self, path: str, routes: Sequence[Route]) -> None:
+        """为同一路径登记一串响应；除最后一个外每次请求依次消费。"""
+
+        self.post_routes[path] = list(routes)
+
     def add_redirect(self, path: str, location: str, *, status: int = 302) -> None:
         self.routes[path] = Route(
             status=status, headers={"Location": location}, body=b""
@@ -79,6 +87,8 @@ class LocalDocServer:
 
     def _build_handler(self) -> type[BaseHTTPRequestHandler]:
         routes = self.routes
+        post_routes = self.post_routes
+        requests = self.requests
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -90,11 +100,7 @@ class LocalDocServer:
                     # 客户端超时断开属于预期路径（用于超时测试）
                     self.close_connection = True
 
-            def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler 约定
-                route = routes.get(self.path)
-                if route is None:
-                    self.send_error(404, "Not Found")
-                    return
+            def _send_route(self, route: Route) -> None:
                 if route.delay_seconds:
                     time.sleep(route.delay_seconds)
                 self.send_response(route.status)
@@ -114,6 +120,26 @@ class LocalDocServer:
                     except (ConnectionAbortedError, BrokenPipeError):
                         # 客户端超时断开是预期路径（用于超时测试）
                         return
+
+            def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler 约定
+                requests.append(("GET", self.path))
+                route = routes.get(self.path)
+                if route is None:
+                    self.send_error(404, "Not Found")
+                    return
+                self._send_route(route)
+
+            def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler 约定
+                requests.append(("POST", self.path))
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
+                available = post_routes.get(self.path)
+                if not available:
+                    self.send_error(404, "Not Found")
+                    return
+                route = available.pop(0) if len(available) > 1 else available[0]
+                self._send_route(route)
 
             def log_message(self, *_args: object) -> None:
                 return
