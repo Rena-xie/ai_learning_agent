@@ -145,10 +145,18 @@ class AgentRuntime:
                     registry=registry,
                 )
             except TimeoutError as exc:
-                raise AppError(
+                timeout_error = AppError(
                     ErrorCode.RUN_TIMEOUT,
                     "本次运行超出总时限，已停止；请稍后重试或缩小问题范围",
-                ) from exc
+                    detail=type(exc).__name__,
+                )
+                return self._finish_failure(
+                    run_id=run_id,
+                    exc=timeout_error,
+                    started_perf=started_perf,
+                    usage=usage,
+                    model_name=model_name,
+                )
             except AppError as exc:
                 return self._finish_failure(
                     run_id=run_id,
@@ -246,6 +254,7 @@ class AgentRuntime:
             messages: list[ChatMessage] = list(bundle.messages)
             tool_schemas = self._tools.schemas()
             state = ToolExecutionState(max_calls=self._max_tool_calls)
+            used_tool_call_ids: set[str] = set()
             usage = UsageRecord()
             model_name: str | None = None
 
@@ -304,6 +313,7 @@ class AgentRuntime:
                         conversation_id=conversation_id,
                         execution=execution,
                         registry=registry,
+                        used_tool_call_ids=used_tool_call_ids,
                     )
                     messages.append(
                         ChatMessage(
@@ -423,6 +433,7 @@ class AgentRuntime:
         conversation_id: str,
         execution: ToolExecution,
         registry: SourceRegistry,
+        used_tool_call_ids: set[str],
     ) -> None:
         if execution.content is not None and execution.source_id is not None:
             snapshot_id = self._repositories.add_snapshot(
@@ -446,7 +457,9 @@ class AgentRuntime:
             registry.register(reference)
         self._repositories.add_tool_call(
             run_id=run_id,
-            tool_call_id=execution.tool_call_id,
+            tool_call_id=_unique_tool_call_id(
+                execution.tool_call_id, used_tool_call_ids
+            ),
             tool_name=execution.tool_name,
             status=str(execution.status),
             started_at=execution.started_at,
@@ -518,3 +531,15 @@ def _tool_payload_text(payload: dict[str, object], max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + "…（工具结果超出长度上限，已截断）"
+
+
+def _unique_tool_call_id(tool_call_id: str, used: set[str]) -> str:
+    """保证同一次运行内的工具调用记录主键唯一（供应商可能复用调用 ID）。"""
+
+    candidate = tool_call_id
+    suffix = 2
+    while candidate in used:
+        candidate = f"{tool_call_id}~{suffix}"
+        suffix += 1
+    used.add(candidate)
+    return candidate

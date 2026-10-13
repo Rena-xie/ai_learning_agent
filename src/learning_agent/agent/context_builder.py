@@ -22,6 +22,7 @@ _CJK_RANGES = (
 _CJK_TOKEN_RATIO = 0.6
 _OTHER_TOKEN_RATIO = 0.3
 _TOKENS_TO_CHARS = 1.6
+_DOCUMENT_OVERHEAD_TOKENS = 60
 
 
 def estimate_tokens(text: str) -> int:
@@ -118,7 +119,7 @@ class ContextBuilder:
             text, truncated = _fit_document(
                 document.text, self._max_document_chars, budget
             )
-            cost = estimate_tokens(text) + 40
+            cost = estimate_tokens(text) + _DOCUMENT_OVERHEAD_TOKENS
             if cost > budget:
                 notes.append("部分已获取文档因上下文预算未送入模型，回答可能不完整")
                 break
@@ -157,7 +158,8 @@ class ContextBuilder:
 
 
 def _fit_document(text: str, max_chars: int, budget_tokens: int) -> tuple[str, bool]:
-    char_cap = min(max_chars, max(200, int(budget_tokens * _TOKENS_TO_CHARS)))
+    usable = max(0, budget_tokens - _DOCUMENT_OVERHEAD_TOKENS)
+    char_cap = min(max_chars, max(200, int(usable * _TOKENS_TO_CHARS)))
     if len(text) <= char_cap:
         return text, False
     return text[:char_cap], True
