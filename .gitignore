@@ -26,6 +26,7 @@ logs/
 .uv-cache/
 .python/
 .pytest-tmp/
+evals/results/last-run.json
 dist/
 build/
 .scratch/

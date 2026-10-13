@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
@@ -23,15 +24,24 @@ from learning_agent.persistence.migrations import apply_migrations
 from learning_agent.persistence.repositories import Repositories
 from learning_agent.tools.document.fetcher import DocumentFetcher
 from learning_agent.tools.document.tool import FetchDocumentTool
-from learning_agent.tools.document.url_policy import UrlPolicy
+from learning_agent.tools.document.url_policy import Resolver, UrlPolicy
 
 logger = get_logger(__name__)
 
 _WEB_DIR = Path(__file__).resolve().parent / "web"
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """构建应用实例；必需配置缺失时抛出错误并停止不完整启动。"""
+def create_app(
+    settings: Settings | None = None,
+    *,
+    document_transport: httpx.AsyncBaseTransport | None = None,
+    document_resolver: Resolver | None = None,
+) -> FastAPI:
+    """构建应用实例；必需配置缺失时抛出错误并停止不完整启动。
+
+    ``document_transport`` / ``document_resolver`` 是测试/评估用的注入点：把文档获取指向
+    本地可控服务，不改变任何安全策略（URL 白名单、端口、逐跳重定向等仍然生效）。
+    """
 
     resolved = settings or get_settings()
     resolved.require_model_credentials()
@@ -50,12 +60,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     policy = UrlPolicy(
         allowed_hosts=resolved.allowed_hosts_set,
         allowed_ports=resolved.allowed_ports_set,
+        **({"resolver": document_resolver} if document_resolver else {}),
     )
     fetcher = DocumentFetcher(
         policy,
         timeout_seconds=resolved.fetch_timeout_seconds,
         max_bytes=resolved.max_document_bytes,
         max_redirects=resolved.max_redirects,
+        transport=document_transport,
+        verify_peer_address=document_transport is None,
     )
     fetch_tool = FetchDocumentTool(
         fetcher, max_document_chars=resolved.max_document_chars
