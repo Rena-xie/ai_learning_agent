@@ -15,7 +15,9 @@
   并补充了[威胁模型](docs/threat-model.md)。
 - **阶段 4（可观测性与评估）：已完成**。运行统计接口、12 个固定评估案例与回归比较框架，
   真实模型基线结果见 `evals/results/`。
-- **阶段 5：未实现**。Docker Compose、CI 与最终交付文档将在阶段 5 完成。
+- **阶段 5（可重复部署与交付验收）：进行中**。Dockerfile/Compose、CI 工作流、
+  [架构说明](docs/architecture.md)与[验收记录](docs/verification-log.md)已完成；
+  **容器构建与运行验证待完成**（本机 Docker 代理无响应，见验收记录）。
 
 ## 已实现能力
 
@@ -100,6 +102,19 @@ uv run python -m evals.run_eval --save-baseline evals/results/baseline-<日期>.
 
 评估标准与检查项见 `evals/criteria.md`，策略说明见
 [ADR 0004](docs/adr/0004-agent-evaluation.md)。默认测试套件**不包含**评估运行（可选付费检查）。
+
+## Docker 部署
+
+```bash
+docker compose build          # 构建镜像（python:3.12-slim + 锁定依赖）
+docker compose up -d          # 启动（端口仅绑定 127.0.0.1:8000，数据卷 ./data）
+curl http://127.0.0.1:8000/health/ready
+docker compose down
+```
+
+密钥通过 `.env` 注入（`env_file`），不写入镜像；数据库文件落在 `./data` 卷内，
+容器重建后数据保留。**注意**：上述命令尚未在本机验证成功（Docker 守护进程代理不可用），
+验证状态与阻塞原因见 [docs/verification-log.md](docs/verification-log.md)。
 
 ## 数据管理（命令均已实际执行验证）
 
