@@ -13,7 +13,9 @@
 - **阶段 3（安全与故障处理加固）：已完成**。对端地址校验与长度预检、启动清理孤立运行、
   模型故障映射与重试、资源上限与循环终止、提示词注入与恶意参数防护、密钥与日志脱敏核查，
   并补充了[威胁模型](docs/threat-model.md)。
-- **阶段 4-5：未实现**。Agent 评估集、Docker Compose、CI 与最终交付文档将在后续阶段完成。
+- **阶段 4（可观测性与评估）：已完成**。运行统计接口、12 个固定评估案例与回归比较框架，
+  真实模型基线结果见 `evals/results/`。
+- **阶段 5：未实现**。Docker Compose、CI 与最终交付文档将在阶段 5 完成。
 
 ## 已实现能力
 
@@ -82,6 +84,22 @@
 要点：文档域名白名单（不配置即拒绝抓取）、DNS 与对端地址双重校验、逐跳重定向校验、
 工具静态注册与参数校验、来源与链接服务端校验、日志脱敏、完整资源上限，以及
 「启动时清理孤立运行」的故障恢复。远程访问必须经认证的 HTTPS 反向代理或 VPN。
+
+## 观测与评估
+
+```bash
+# 基础运行统计（成功率、耗时、Token 用量、工具失败与文档获取成功率）
+curl http://127.0.0.1:8000/api/v1/stats
+
+# Agent 评估集（真实模型，产生费用；结果写入 evals/results/last-run.json）
+uv run python -m evals.run_eval
+uv run python -m evals.run_eval --case url_only              # 单个案例
+uv run python -m evals.run_eval --baseline evals/results/baseline-20261013.json
+uv run python -m evals.run_eval --save-baseline evals/results/baseline-<日期>.json
+```
+
+评估标准与检查项见 `evals/criteria.md`，策略说明见
+[ADR 0004](docs/adr/0004-agent-evaluation.md)。默认测试套件**不包含**评估运行（可选付费检查）。
 
 ## 数据管理（命令均已实际执行验证）
 
