@@ -44,6 +44,7 @@ class ErrorCode(StrEnum):
     TOOL_LIMIT_EXCEEDED = "tool_limit_exceeded"
     MODEL_ROUND_LIMIT_EXCEEDED = "model_round_limit_exceeded"
     RUN_TIMEOUT = "run_timeout"
+    RUN_INTERRUPTED = "run_interrupted"
 
     MODEL_TIMEOUT = "model_timeout"
     MODEL_RATE_LIMITED = "model_rate_limited"
@@ -69,6 +70,7 @@ _ERROR_CATEGORY: dict[ErrorCode, ErrorCategory] = {
     ErrorCode.TOOL_LIMIT_EXCEEDED: ErrorCategory.RESOURCE_LIMIT,
     ErrorCode.MODEL_ROUND_LIMIT_EXCEEDED: ErrorCategory.RESOURCE_LIMIT,
     ErrorCode.RUN_TIMEOUT: ErrorCategory.RESOURCE_LIMIT,
+    ErrorCode.RUN_INTERRUPTED: ErrorCategory.INTERNAL,
     ErrorCode.MODEL_TIMEOUT: ErrorCategory.MODEL,
     ErrorCode.MODEL_RATE_LIMITED: ErrorCategory.MODEL,
     ErrorCode.MODEL_ERROR: ErrorCategory.MODEL,
@@ -92,6 +94,7 @@ _ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.TOOL_LIMIT_EXCEEDED: 500,
     ErrorCode.MODEL_ROUND_LIMIT_EXCEEDED: 500,
     ErrorCode.RUN_TIMEOUT: 504,
+    ErrorCode.RUN_INTERRUPTED: 500,
     ErrorCode.MODEL_TIMEOUT: 504,
     ErrorCode.MODEL_RATE_LIMITED: 429,
     ErrorCode.MODEL_ERROR: 502,

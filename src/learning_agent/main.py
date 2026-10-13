@@ -40,6 +40,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     apply_migrations(resolved.database_url)
     engine = build_engine(resolved.database_url)
     repositories = Repositories(build_session_factory(engine))
+    recovered_runs = repositories.fail_stale_runs()
+    if recovered_runs:
+        logger.warning(
+            "stale_runs_recovered",
+            extra={"extra_fields": {"count": recovered_runs}},
+        )
 
     policy = UrlPolicy(
         allowed_hosts=resolved.allowed_hosts_set,

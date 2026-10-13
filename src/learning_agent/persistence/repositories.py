@@ -8,13 +8,18 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from learning_agent.domain.entities import DocumentContent, Section, UsageRecord
 from learning_agent.domain.enums import MessageRole, RunStatus
-from learning_agent.domain.errors import AppError, ErrorCode, PersistenceError
+from learning_agent.domain.errors import (
+    AppError,
+    ErrorCategory,
+    ErrorCode,
+    PersistenceError,
+)
 from learning_agent.persistence.models import (
     AgentRun,
     Conversation,
@@ -326,6 +331,30 @@ class Repositories:
                 .limit(1)
             ).first()
             return _to_run(run) if run else None
+
+    def fail_stale_runs(self) -> int:
+        """把启动前遗留的 pending/running 运行标记为失败。
+
+        单实例本地应用中，进程启动时不可能存在真正运行中的任务；残留记录只可能
+        来自上次进程被中断，若不清理会永久占用「单对话单活动运行」约束。
+        """
+
+        with self._session() as session:
+            result = session.execute(
+                update(AgentRun)
+                .where(
+                    AgentRun.status.in_(
+                        [RunStatus.PENDING.value, RunStatus.RUNNING.value]
+                    )
+                )
+                .values(
+                    status=RunStatus.FAILED.value,
+                    finished_at=utcnow(),
+                    error_code=ErrorCode.RUN_INTERRUPTED.value,
+                    error_category=ErrorCategory.INTERNAL.value,
+                )
+            )
+            return int(result.rowcount or 0)
 
     def add_tool_call(
         self,
