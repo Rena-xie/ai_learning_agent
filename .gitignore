@@ -24,6 +24,8 @@ logs/
 
 # 运行生成物
 .uv-cache/
+.python/
+.pytest-tmp/
 dist/
 build/
 .scratch/

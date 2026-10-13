@@ -42,7 +42,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "C4", "RET", "ASYNC"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
-addopts = "-ra"
+addopts = "-ra --basetemp=.pytest-tmp"
 markers = [
     "real_model: 需要真实模型 API 的测试（会产生外部请求与费用）",
 ]
