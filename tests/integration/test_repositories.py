@@ -10,15 +10,16 @@ from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.persistence.database import (
     build_engine,
     build_session_factory,
-    init_database,
 )
+from learning_agent.persistence.migrations import apply_migrations
 from learning_agent.persistence.repositories import Repositories
 
 
 @pytest.fixture
 def repositories(tmp_path) -> Repositories:
-    engine = build_engine(f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
-    init_database(engine)
+    database_url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    apply_migrations(database_url)
+    engine = build_engine(database_url)
     return Repositories(build_session_factory(engine))
 
 

@@ -8,8 +8,6 @@ from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
-from learning_agent.persistence.models import Base
-
 
 def build_engine(database_url: str, *, echo: bool = False) -> Engine:
     """按 DATABASE_URL 构建引擎；SQLite 文件目录不存在时自动创建。"""
@@ -38,12 +36,6 @@ def _enable_sqlite_foreign_keys(dbapi_connection: object, _record: object) -> No
 
 def build_session_factory(engine: Engine) -> sessionmaker:
     return sessionmaker(bind=engine, expire_on_commit=False, future=True)
-
-
-def init_database(engine: Engine) -> None:
-    """阶段 1 直接建表；数据库迁移（Alembic）在阶段 2 接管。"""
-
-    Base.metadata.create_all(engine)
 
 
 def ping(engine: Engine) -> bool:

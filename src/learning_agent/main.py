@@ -16,11 +16,8 @@ from learning_agent.application.chat_service import ChatService
 from learning_agent.config import Settings, get_settings
 from learning_agent.models.provider_adapter import OpenAICompatibleModelClient
 from learning_agent.observability.logging import configure_logging, get_logger
-from learning_agent.persistence.database import (
-    build_engine,
-    build_session_factory,
-    init_database,
-)
+from learning_agent.persistence.database import build_engine, build_session_factory
+from learning_agent.persistence.migrations import apply_migrations
 from learning_agent.persistence.repositories import Repositories
 from learning_agent.tools.document.fetcher import DocumentFetcher
 from learning_agent.tools.document.tool import FetchDocumentTool
@@ -36,8 +33,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved.require_model_credentials()
     configure_logging(resolved.log_level)
 
+    apply_migrations(resolved.database_url)
     engine = build_engine(resolved.database_url)
-    init_database(engine)
     repositories = Repositories(build_session_factory(engine))
 
     policy = UrlPolicy(
