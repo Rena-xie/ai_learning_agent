@@ -54,6 +54,108 @@ async function waitForRun(runId, timeoutMs = 180000) {
   }
 }
 
+const INLINE_PATTERN = /(\*\*[^*]+\*\*|`[^`]+`|\[S\d{1,3}\])/g;
+
+function renderInline(text, sourcesById) {
+  const nodes = [];
+  let lastIndex = 0;
+  let match = INLINE_PATTERN.exec(text);
+  while (match !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+    const token = match[0];
+    if (token.startsWith("**")) {
+      const strong = document.createElement("strong");
+      strong.textContent = token.slice(2, -2);
+      nodes.push(strong);
+    } else if (token.startsWith("`")) {
+      const code = document.createElement("code");
+      code.textContent = token.slice(1, -1);
+      nodes.push(code);
+    } else {
+      // [S1]：来源编号由服务端校验，这里链接到服务端提供的真实来源地址
+      const sourceId = token.slice(1, -1);
+      const source = sourcesById.get(sourceId);
+      if (source) {
+        const link = document.createElement("a");
+        link.className = "citation";
+        link.href = source.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = `[${sourceId}]`;
+        nodes.push(link);
+      } else {
+        nodes.push(document.createTextNode(token));
+      }
+    }
+    lastIndex = INLINE_PATTERN.lastIndex;
+    match = INLINE_PATTERN.exec(text);
+  }
+  if (lastIndex < text.length) {
+    nodes.push(document.createTextNode(text.slice(lastIndex)));
+  }
+  return nodes;
+}
+
+// 极简渲染器：只处理标题、列表、粗体、行内代码与 [S1]，一律生成 DOM 节点，
+// 不使用 innerHTML，因此模型输出中的 HTML/脚本不会被当作标记执行。
+function renderMarkdown(content, sources) {
+  const sourcesById = new Map(
+    (sources || []).map((source) => [source.source_id, source]),
+  );
+  const container = document.createElement("div");
+  container.className = "message-body";
+  const lines = String(content || "").split("\n");
+  let list = null;
+  let listType = null;
+
+  const flushList = () => {
+    if (list) {
+      container.append(list);
+      list = null;
+      listType = null;
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\s+$/, "");
+    if (!line.trim()) {
+      flushList();
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading) {
+      flushList();
+      const level = Math.min(heading[1].length + 2, 6);
+      const el = document.createElement(`h${level}`);
+      el.append(...renderInline(heading[2], sourcesById));
+      container.append(el);
+      continue;
+    }
+    const unordered = /^[-*]\s+(.*)$/.exec(line);
+    const ordered = /^\d+[.)]\s+(.*)$/.exec(line);
+    if (unordered || ordered) {
+      const wanted = ordered ? "ol" : "ul";
+      if (listType !== wanted) {
+        flushList();
+        list = document.createElement(wanted);
+        listType = wanted;
+      }
+      const item = document.createElement("li");
+      item.append(...renderInline(ordered ? ordered[1] : unordered[1], sourcesById));
+      list.append(item);
+      continue;
+    }
+    flushList();
+    const paragraph = document.createElement("p");
+    paragraph.append(...renderInline(line, sourcesById));
+    container.append(paragraph);
+  }
+  flushList();
+  return container;
+}
+
 function setStatus(text, kind) {
   if (!text) {
     elements.statusBar.hidden = true;
@@ -130,8 +232,7 @@ function renderMessages() {
     meta.textContent = `${message.role === "user" ? "我" : "助手"} · ${formatTime(
       message.created_at,
     )}`;
-    const body = document.createElement("div");
-    body.textContent = message.content;
+    const body = renderMarkdown(message.content, message.sources);
     article.append(meta, body);
     if (message.sources && message.sources.length > 0) {
       article.append(renderSources(message.sources));

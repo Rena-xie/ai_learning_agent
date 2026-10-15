@@ -145,6 +145,52 @@ body {
   align-self: flex-start;
 }
 
+.message-body {
+  white-space: normal;
+}
+
+.message-body p {
+  margin: 0 0 8px;
+}
+
+.message-body p:last-child {
+  margin-bottom: 0;
+}
+
+.message-body h3,
+.message-body h4,
+.message-body h5,
+.message-body h6 {
+  font-size: 14.5px;
+  margin: 12px 0 6px;
+}
+
+.message-body ul,
+.message-body ol {
+  margin: 0 0 8px;
+  padding-left: 22px;
+}
+
+.message-body li {
+  margin: 2px 0;
+}
+
+.message-body code {
+  background: rgba(127, 127, 127, 0.16);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 13px;
+}
+
+.message-body a.citation {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.message-body a.citation:hover {
+  text-decoration: underline;
+}
+
 .message-meta {
   font-size: 12px;
   color: var(--muted);
