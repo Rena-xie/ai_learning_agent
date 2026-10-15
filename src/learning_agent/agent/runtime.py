@@ -261,7 +261,7 @@ class AgentRuntime:
         registry: SourceRegistry,
     ) -> tuple[str, tuple[SourceReference, ...], UsageRecord, str | None, list[str]]:
         async with asyncio.timeout(self._run_timeout_seconds):
-            history = await self._load_history(conversation_id)
+            history = await self._load_history(conversation_id, run_id=run_id)
             documents, reuse_notes = await self._prepare_reusable_documents(
                 conversation_id, registry
             )
@@ -405,17 +405,19 @@ class AgentRuntime:
                 )
         return validation.content, sources, usage, model_name, notes
 
-    async def _load_history(self, conversation_id: str) -> list[ChatMessage]:
+    async def _load_history(
+        self, conversation_id: str, *, run_id: str
+    ) -> list[ChatMessage]:
         records = await self._repositories.list_messages(conversation_id)
         messages: list[ChatMessage] = []
         for record in records:
             role = record.role
             if role not in {MessageRole.USER.value, MessageRole.ASSISTANT.value}:
                 continue
+            # 显式排除本次运行刚写入的用户消息，不依赖「最后一条」的位置假设
+            if record.run_id == run_id:
+                continue
             messages.append(ChatMessage(role=role, content=record.content))
-        # 最后一条是刚刚写入的当前用户消息，避免重复
-        if messages and messages[-1].role == MessageRole.USER.value:
-            messages.pop()
         return messages
 
     async def _prepare_reusable_documents(

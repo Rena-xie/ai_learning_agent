@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -546,14 +546,6 @@ class Repositories:
                 )
             )
 
-    def count_messages(self, conversation_id: str) -> int:
-        with self._session() as session:
-            return len(
-                session.scalars(
-                    select(Message.id).where(Message.conversation_id == conversation_id)
-                ).all()
-            )
-
     def list_run_sources(
         self, conversation_id: str
     ) -> dict[str, tuple[RunSourceView, ...]]:
@@ -725,14 +717,6 @@ class Repositories:
                 .limit(1)
             ).first()
             return _to_message(row) if row else None
-
-    def purge_conversation_messages(self, conversation_id: str) -> None:
-        """仅用于测试/维护：清空某对话的消息。"""
-
-        with self._session() as session:
-            session.execute(
-                delete(Message).where(Message.conversation_id == conversation_id)
-            )
 
 
 def _to_conversation(row: Conversation) -> ConversationRecord:
