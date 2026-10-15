@@ -63,24 +63,21 @@ async def list_messages(
     if await repositories.get_conversation(conversation_id) is None:
         raise AppError(ErrorCode.NOT_FOUND, "对话不存在或已被删除")
     messages = await repositories.list_messages(conversation_id)
+    sources_by_run = await repositories.list_run_sources(conversation_id)
     responses: list[MessageWithSourcesResponse] = []
-    source_cache: dict[str, list[SourceResponse]] = {}
     for message in messages:
         sources: list[SourceResponse] = []
         if message.role == "assistant" and message.run_id:
-            if message.run_id not in source_cache:
-                run = await repositories.get_run(message.run_id)
-                source_cache[message.run_id] = [
-                    SourceResponse(
-                        source_id=item.source_id,
-                        title=item.title,
-                        url=item.canonical_url,
-                        fetched_at=item.fetched_at,
-                        truncated=item.truncated,
-                    )
-                    for item in (run.sources if run else ())
-                ]
-            sources = source_cache[message.run_id]
+            sources = [
+                SourceResponse(
+                    source_id=item.source_id,
+                    title=item.title,
+                    url=item.canonical_url,
+                    fetched_at=item.fetched_at,
+                    truncated=item.truncated,
+                )
+                for item in sources_by_run.get(message.run_id, ())
+            ]
         responses.append(
             MessageWithSourcesResponse(
                 id=message.id,

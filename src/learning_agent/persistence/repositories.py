@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -554,58 +554,151 @@ class Repositories:
                 ).all()
             )
 
-    def run_statistics(self) -> dict[str, object]:
-        """基础运行统计：成功率、耗时、工具失败、文档获取成功率与 Token 用量。"""
+    def list_run_sources(
+        self, conversation_id: str
+    ) -> dict[str, tuple[RunSourceView, ...]]:
+        """一次性取出该对话所有运行的来源，按 run_id 分组（避免逐条查询）。"""
 
         with self._session() as session:
-            runs = session.scalars(select(AgentRun)).all()
-            tool_calls = session.scalars(select(ToolCall)).all()
+            rows = session.execute(
+                select(RunSource, DocumentSnapshot)
+                .join(AgentRun, AgentRun.id == RunSource.run_id)
+                .join(
+                    DocumentSnapshot,
+                    RunSource.document_snapshot_id == DocumentSnapshot.id,
+                )
+                .where(AgentRun.conversation_id == conversation_id)
+                .order_by(RunSource.run_id, RunSource.source_id)
+            ).all()
+        grouped: dict[str, list[RunSourceView]] = {}
+        for source, snapshot in rows:
+            grouped.setdefault(source.run_id, []).append(
+                RunSourceView(
+                    source_id=source.source_id,
+                    snapshot_id=snapshot.id,
+                    canonical_url=snapshot.canonical_url,
+                    title=snapshot.title,
+                    fetched_at=snapshot.fetched_at,
+                    truncated=snapshot.truncated,
+                )
+            )
+        return {run_id: tuple(items) for run_id, items in grouped.items()}
 
-        total = len(runs)
-        completed = [run for run in runs if run.status == RunStatus.COMPLETED.value]
-        failed = [run for run in runs if run.status == RunStatus.FAILED.value]
-        durations = sorted(
-            run.duration_ms for run in runs if run.duration_ms is not None
-        )
-        costs = [
-            run.estimated_cost for run in runs if run.estimated_cost is not None
-        ]
-        error_counts: dict[str, int] = {}
-        for run in runs:
-            if run.error_code:
-                error_counts[run.error_code] = error_counts.get(run.error_code, 0) + 1
-        fetch_calls = [
-            call for call in tool_calls if call.tool_name == "fetch_document"
-        ]
-        fetch_succeeded = [
-            call
-            for call in fetch_calls
-            if call.status == ToolCallStatus.SUCCEEDED.value
-        ]
+    def run_statistics(self) -> dict[str, object]:
+        """基础运行统计：用 SQL 聚合，避免把全部运行与工具调用载入内存。"""
+
+        with self._session() as session:
+            runs_total = (
+                session.scalar(select(func.count()).select_from(AgentRun)) or 0
+            )
+            runs_completed = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(AgentRun)
+                    .where(AgentRun.status == RunStatus.COMPLETED.value)
+                )
+                or 0
+            )
+            runs_failed = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(AgentRun)
+                    .where(AgentRun.status == RunStatus.FAILED.value)
+                )
+                or 0
+            )
+            input_tokens_total = (
+                session.scalar(
+                    select(func.coalesce(func.sum(AgentRun.input_tokens), 0))
+                )
+                or 0
+            )
+            output_tokens_total = (
+                session.scalar(
+                    select(func.coalesce(func.sum(AgentRun.output_tokens), 0))
+                )
+                or 0
+            )
+            cost_sum = session.scalar(select(func.sum(AgentRun.estimated_cost)))
+            durations = list(
+                session.scalars(
+                    select(AgentRun.duration_ms)
+                    .where(AgentRun.duration_ms.is_not(None))
+                    .order_by(AgentRun.duration_ms)
+                ).all()
+            )
+            tool_calls_total = (
+                session.scalar(select(func.count()).select_from(ToolCall)) or 0
+            )
+            tool_calls_failed = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(ToolCall)
+                    .where(
+                        ToolCall.status.in_(
+                            [
+                                ToolCallStatus.FAILED.value,
+                                ToolCallStatus.REJECTED.value,
+                            ]
+                        )
+                    )
+                )
+                or 0
+            )
+            document_fetches_total = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(ToolCall)
+                    .where(ToolCall.tool_name == "fetch_document")
+                )
+                or 0
+            )
+            document_fetches_succeeded = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(ToolCall)
+                    .where(
+                        ToolCall.tool_name == "fetch_document",
+                        ToolCall.status == ToolCallStatus.SUCCEEDED.value,
+                    )
+                )
+                or 0
+            )
+            error_rows = session.execute(
+                select(AgentRun.error_code, func.count())
+                .where(AgentRun.error_code.is_not(None))
+                .group_by(AgentRun.error_code)
+            ).all()
+
+        error_counts = {str(code): int(count) for code, count in error_rows}
         return {
-            "runs_total": total,
-            "runs_completed": len(completed),
-            "runs_failed": len(failed),
-            "success_rate": round(len(completed) / total, 4) if total else None,
-            "failure_rate": round(len(failed) / total, 4) if total else None,
+            "runs_total": runs_total,
+            "runs_completed": runs_completed,
+            "runs_failed": runs_failed,
+            "success_rate": (
+                round(runs_completed / runs_total, 4) if runs_total else None
+            ),
+            "failure_rate": round(runs_failed / runs_total, 4) if runs_total else None,
             "duration_ms_avg": (
                 int(sum(durations) / len(durations)) if durations else None
             ),
             "duration_ms_p50": durations[len(durations) // 2] if durations else None,
-            "input_tokens_total": sum(run.input_tokens or 0 for run in runs),
-            "output_tokens_total": sum(run.output_tokens or 0 for run in runs),
-            "estimated_cost_total": round(sum(costs), 6) if costs else None,
-            "tool_calls_total": len(tool_calls),
-            "tool_calls_failed": sum(
-                1
-                for call in tool_calls
-                if call.status
-                in {ToolCallStatus.FAILED.value, ToolCallStatus.REJECTED.value}
+            "duration_ms_p95": (
+                durations[min(len(durations) - 1, int(len(durations) * 0.95))]
+                if durations
+                else None
             ),
-            "document_fetches_total": len(fetch_calls),
+            "input_tokens_total": int(input_tokens_total),
+            "output_tokens_total": int(output_tokens_total),
+            "estimated_cost_total": (
+                round(float(cost_sum), 6) if cost_sum is not None else None
+            ),
+            "tool_calls_total": tool_calls_total,
+            "tool_calls_failed": tool_calls_failed,
+            "document_fetches_total": document_fetches_total,
             "document_fetch_success_rate": (
-                round(len(fetch_succeeded) / len(fetch_calls), 4)
-                if fetch_calls
+                round(document_fetches_succeeded / document_fetches_total, 4)
+                if document_fetches_total
                 else None
             ),
             "error_codes": dict(

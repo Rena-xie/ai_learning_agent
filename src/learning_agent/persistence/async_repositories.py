@@ -21,6 +21,7 @@ from learning_agent.persistence.repositories import (
     MessageRecord,
     Repositories,
     RunRecord,
+    RunSourceView,
     SnapshotRecord,
 )
 
@@ -151,6 +152,11 @@ class AsyncRepositories:
             run_id=run_id,
             role=role,
         )
+
+    async def list_run_sources(
+        self, conversation_id: str
+    ) -> dict[str, tuple[RunSourceView, ...]]:
+        return await self._call(self._inner.list_run_sources, conversation_id)
 
     # ---------- 文档快照与来源 ----------
 

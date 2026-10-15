@@ -107,6 +107,7 @@ class RunStatsResponse(BaseModel):
     failure_rate: float | None = None
     duration_ms_avg: int | None = None
     duration_ms_p50: int | None = None
+    duration_ms_p95: int | None = None
     input_tokens_total: int
     output_tokens_total: int
     estimated_cost_total: float | None = None

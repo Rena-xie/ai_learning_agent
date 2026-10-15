@@ -91,6 +91,8 @@ async def test_stats_aggregate_runs_and_tools(tmp_path) -> None:
     assert body["runs_failed"] == 1
     assert body["success_rate"] == 0.5
     assert body["duration_ms_avg"] == 2_000
+    assert body["duration_ms_p50"] == 3_000
+    assert body["duration_ms_p95"] == 3_000
     assert body["input_tokens_total"] == 100
     assert body["output_tokens_total"] == 50
     assert body["tool_calls_total"] == 2

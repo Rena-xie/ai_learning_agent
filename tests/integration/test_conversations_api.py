@@ -123,3 +123,49 @@ async def test_messages_are_isolated_between_conversations(tmp_path) -> None:
         ).json()
     assert [message["content"] for message in first_messages] == ["只属于对话一"]
     assert [message["content"] for message in second_messages] == ["只属于对话二"]
+
+
+async def test_list_messages_includes_run_sources(tmp_path) -> None:
+    """消息列表一次性带出各运行的来源（覆盖批量来源查询）。"""
+
+    app = create_app(make_settings(tmp_path))
+    repositories = app.state.repositories
+    async with running_client(app) as client:
+        conversation_id = (
+            await client.post("/api/v1/conversations", json={})
+        ).json()["id"]
+        run_id = "33333333-0000-0000-0000-000000000001"
+        repositories.create_run(
+            run_id=run_id,
+            conversation_id=conversation_id,
+            model_name="test-model",
+            prompt_version="v1",
+        )
+        repositories.add_message(
+            conversation_id=conversation_id, role="user", content="请解释文档"
+        )
+        snapshot_id = repositories.add_snapshot(
+            conversation_id=conversation_id,
+            content=make_content(),
+            parse_status="ok",
+        )
+        repositories.link_run_source(
+            run_id=run_id, snapshot_id=snapshot_id, source_id="S1"
+        )
+        repositories.add_message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content="结论如下 [S1]。",
+            run_id=run_id,
+        )
+        repositories.finish_run(
+            run_id=run_id, status=RunStatus.COMPLETED, usage=UsageRecord()
+        )
+
+        messages = (
+            await client.get(f"/api/v1/conversations/{conversation_id}/messages")
+        ).json()
+
+    assistant = next(item for item in messages if item["role"] == "assistant")
+    assert [source["source_id"] for source in assistant["sources"]] == ["S1"]
+    assert assistant["sources"][0]["url"] == "https://docs.example.com/guide"
