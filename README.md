@@ -18,10 +18,18 @@
 - **阶段 5（可重复部署与交付验收）：已完成**。Dockerfile/Compose、CI 工作流、
   [架构说明](docs/architecture.md)与[验收记录](docs/verification-log.md)均已交付；
   容器构建、启动、容器内真实问答、重启持久化与备份恢复演练全部通过。
+- **阶段 6（v1.1 工程优化）：代码与文档已完成，完整测试待在本机环境执行**。
+  一次运行改为后台执行并新增异步提交端点（`?mode=async`，默认仍为同步）；
+  数据库访问异步化并合并单次运行事务；上下文 token 估算引入安全系数并映射超上下文错误；
+  文档快照按 URL 与内容哈希去重；落地运行成本估算；引用校验清理裸 URL；
+  运行统计改为 SQL 聚合并新增 p95 与成本；界面渲染轻量 Markdown（保持 XSS 安全）。
+  决策见 [ADR 0005](docs/adr/0005-async-run-execution.md)，验收状态见
+  [verification-log](docs/verification-log.md#v11-工程优化阶段-6)。
 
 ## 已实现能力
 
-- **模型适配器**：OpenAI 兼容协议（默认 DeepSeek），工具调用、有限重试、用量解析与统一错误映射。
+- **模型适配器**：OpenAI 兼容协议（默认 DeepSeek），工具调用、有限重试、用量解析与统一错误映射；
+  可选采样温度（`MODEL_TEMPERATURE`，不设置则用服务商默认值）。
 - **文档工具 `fetch_document`**：精确域名白名单、仅 http/https、拒绝 URL 凭据、端口限制、
   DNS 结果必须为公网地址、重定向逐跳重新校验、超时/响应体积/正文长度限制、
   trafilatura + lxml 正文与章节提取、内容哈希与截断标记。
@@ -34,9 +42,13 @@
   数据库级「同一对话同一时间仅一个活动运行」约束，删除对话级联清理。
 - **对话管理**：新建、列表、切换、删除（含确认）；运行进行中拒绝删除并返回 409。
 - **最小界面**：`/` 提供对话列表、消息区、输入框、运行状态提示、来源链接与错误提示，
-  不展示未实现的控件（无流式、无文件上传）。
+  不展示未实现的控件（无流式、无文件上传）。回答按轻量 Markdown 渲染（标题/列表/粗体/
+  行内代码，`[S1]` 标记可点击跳转来源），渲染只生成 DOM 节点、不使用 `innerHTML`。
+- **运行执行**：默认同步返回最终结果；`?mode=async` 立即返回 202 与 `run_id`，
+  运行在后台执行，调用方轮询 `GET /api/v1/runs/{run_id}`，应用关闭时等待在途运行收尾。
 - **API**：`GET /health/live`、`GET /health/ready`、`POST/GET /api/v1/conversations`、
-  `DELETE /api/v1/conversations/{id}`、对话消息接口、`GET /api/v1/runs/{run_id}`。
+  `DELETE /api/v1/conversations/{id}`、对话消息接口（支持 `?mode=async`）、
+  `GET /api/v1/runs/{run_id}`、`GET /api/v1/stats`。
 - **安全与可观测**：安全边界在真实执行处生效（URL 策略、工具注册表、引用校验），
   结构化 JSON 日志 + 敏感信息脱敏，错误分类区分用户输入/外部依赖/内部错误。
 
@@ -90,7 +102,7 @@
 ## 观测与评估
 
 ```bash
-# 基础运行统计（成功率、耗时、Token 用量、工具失败与文档获取成功率）
+# 基础运行统计（成功率、耗时均值/p50/p95、Token 用量、成本、工具失败与文档获取成功率）
 curl http://127.0.0.1:8000/api/v1/stats
 
 # Agent 评估集（真实模型，产生费用；结果写入 evals/results/last-run.json）
@@ -102,6 +114,8 @@ uv run python -m evals.run_eval --save-baseline evals/results/baseline-<日期>.
 
 评估标准与检查项见 `evals/criteria.md`，策略说明见
 [ADR 0004](docs/adr/0004-agent-evaluation.md)。默认测试套件**不包含**评估运行（可选付费检查）。
+评估运行默认固定 `MODEL_TEMPERATURE=0` 以提升可复现性；`--baseline` 除逐案例回归外，
+还会在整体通过率下降时判定回归。
 
 ## Docker 部署
 

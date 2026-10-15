@@ -70,3 +70,41 @@ docker compose down
 | 安全（白名单、SSRF、注入、密钥与日志） | `tests/unit/test_url_policy.py`、`tests/integration/test_prompt_injection.py`、`test_security_boundaries.py`、`test_document_pipeline.py` |
 | 可观测性与评估 | `GET /api/v1/stats`、`tests/integration/test_run_stats.py`、`evals/` 与基线结果 |
 | 迁移、备份与恢复 | `tests/integration/test_migrations.py`、`test_backup_restore.py` 与上文演练记录 |
+
+## v1.1 工程优化（阶段 6）
+
+**状态：代码与文档已完成；完整测试套件未在本环境执行，需在本机运行（见下）。**
+
+本次改造在「无外网、且项目 `.venv` 为 Windows 构建（Linux 沙箱不可用）」的环境中完成，
+无法执行 `uv run pytest` 与 `uv run ruff`。为此采用了如下**替代验证**（均已实际执行）：
+
+| 项目 | 手段 | 结果 |
+|---|---|---|
+| 语法 | `python -m compileall src tests evals` | 通过 |
+| 异步调用一致性 | 自建 AST 静态检查：异步路径中的仓储调用必须被 `await` | 21 处仓储调用全部已 await，无遗漏 |
+| 上下文预算 | 离线脚本直接运行 `context_builder` | 安全系数生效、中文比例更保守、既有裁剪行为不变 |
+| 引用校验 | 离线脚本直接运行 `citation_validator` | 有效/无效标记、Markdown 链接与裸 URL 清理均符合预期 |
+| 成本估算 | 离线脚本直接运行 `domain.entities.estimate_cost` | 定价计算与「缺省为空」均符合预期 |
+| 评估回归判定 | 离线脚本直接运行 `evals.regression.find_regressions` | 逐案例回归与整体通过率下降均能检出，且无误报 |
+| 前端脚本 | `node --check app.js` + 行内标记分词脚本 | 语法与分词逻辑通过 |
+
+**待在本机执行（建议顺序）**：
+
+```bash
+uv sync
+uv run ruff format --check .
+uv run ruff check .
+uv run pytest -m "not real_model"
+uv run pytest                                                  # 含真实模型（产生费用）
+uv run python -m evals.run_eval --baseline evals/results/baseline-20261013.json
+```
+
+说明：本环境缺少 CPython 3.12 与第三方依赖，且无外网，因此以上命令未执行；
+异步提交、后台执行、真实问答与评估回归等端到端验证同样需要在本机完成。
+
+### 新增测试（共 26 个测试函数，未在本环境执行）
+
+新增文件：`tests/integration/test_async_run.py`、`tests/integration/test_repositories_async.py`、
+`tests/unit/test_run_scheduler.py`、`tests/unit/test_cost.py`、`tests/unit/test_eval_regression.py`；
+补充用例：`test_context_builder.py`、`test_citation_validator.py`、`test_model_failures.py`、
+`test_run_stats.py`、`test_conversations_api.py`、`test_runtime_limits.py`。
