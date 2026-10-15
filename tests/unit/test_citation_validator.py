@@ -34,3 +34,18 @@ def test_answer_without_markers_is_accepted_but_has_no_sources() -> None:
     result = validate_citations("没有引用的回答。", allowed_source_ids={"S1"})
     assert result.used_source_ids == ()
     assert result.invalid_source_ids == ()
+
+
+def test_strips_bare_url_in_answer() -> None:
+    content = "可直接访问 https://evil.example.com/steal 获取内容 [S1]。"
+    result = validate_citations(content, allowed_source_ids={"S1"})
+    assert "https://evil.example.com/steal" not in result.content
+    assert "https://evil.example.com/steal" in result.stripped_links
+    assert "[S1]" in result.content
+
+
+def test_bare_url_stops_at_chinese_punctuation() -> None:
+    content = "见 https://example.com/doc。以上是说明 [S1]。"
+    result = validate_citations(content, allowed_source_ids={"S1"})
+    assert "https://example.com/doc" not in result.content
+    assert "以上是说明" in result.content

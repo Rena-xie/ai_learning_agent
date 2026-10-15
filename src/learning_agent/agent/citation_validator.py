@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 CITATION_PATTERN = re.compile(r"\[(S\d{1,3})\]")
 _MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]\[]+)\]\((https?://[^)\s]+)\)")
+#: 裸 URL（排除空白、常见成对符号与中文标点，避免把后文一并吞掉）
+_BARE_URL_PATTERN = re.compile(r"https?://[^\s()\[\]<>\"'，。；：、（）【】《》]+")
 
 
 @dataclass(frozen=True)
@@ -25,8 +27,9 @@ def validate_citations(
     """校验并清理回答中的来源标记与链接。
 
     - 无效来源编号会被移除并记录，不会变成可点击链接；
-    - 模型自带的 Markdown 链接会被移除链接目标（保留可见文本），
-      来源链接由服务端根据真实记录生成。
+    - 模型自带的 Markdown 链接会被移除链接目标（保留可见文本）；
+    - 正文中的裸 URL 也会被移除。
+    来源链接统一由服务端根据真实记录生成。
     """
 
     found = CITATION_PATTERN.findall(content)
@@ -51,6 +54,12 @@ def validate_citations(
         return text
 
     cleaned = _MARKDOWN_LINK_PATTERN.sub(_strip_link, cleaned)
+
+    def _strip_bare_url(match: re.Match[str]) -> str:
+        stripped.append(match.group(0))
+        return ""
+
+    cleaned = _BARE_URL_PATTERN.sub(_strip_bare_url, cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
     return CitationValidationResult(
