@@ -6,10 +6,11 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 
 import pytest
 
-from learning_agent.domain.entities import UsageRecord
+from learning_agent.domain.entities import DocumentContent, UsageRecord
 from learning_agent.domain.enums import RunStatus
 from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.persistence.async_repositories import AsyncRepositories
@@ -103,3 +104,33 @@ async def test_concurrent_facade_calls_do_not_fail(
         *(repositories.list_conversations() for _ in range(8))
     )
     assert all(len(items) == 1 for items in results)
+
+
+async def test_find_snapshot_id_detects_existing_snapshot(
+    repositories: AsyncRepositories,
+) -> None:
+    conversation = await repositories.create_conversation(title="查找快照")
+    assert (
+        await repositories.find_snapshot_id(
+            conversation_id=conversation.id,
+            canonical_url="https://docs.example.com/a",
+            content_hash="x" * 64,
+        )
+        is None
+    )
+    content = DocumentContent(
+        title="示例",
+        canonical_url="https://docs.example.com/a",
+        fetched_at=datetime.now(UTC),
+        content_hash="x" * 64,
+        content_text="正文",
+    )
+    snapshot_id = await repositories.add_snapshot(
+        conversation_id=conversation.id, content=content, parse_status="ok"
+    )
+    found = await repositories.find_snapshot_id(
+        conversation_id=conversation.id,
+        canonical_url=content.canonical_url,
+        content_hash=content.content_hash,
+    )
+    assert found == snapshot_id

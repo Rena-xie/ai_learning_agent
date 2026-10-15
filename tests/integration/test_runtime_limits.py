@@ -168,6 +168,27 @@ async def test_scripted_loop_completes_with_source(repositories: Repositories) -
     assert [call.tool_name for call in run.tool_calls] == ["fetch_document"]
 
 
+async def test_repeated_fetch_reuses_snapshot(repositories: Repositories) -> None:
+    """同一 URL 同内容哈希重复抓取只落一条快照。"""
+
+    model = ScriptedModelClient(
+        [
+            tool_call_response(_TOOL_CALL),
+            tool_call_response(_TOOL_CALL),
+            final_response("结论如下 [S1]。"),
+        ]
+    )
+    runtime = build_runtime(model, repositories)
+    conversation = repositories.create_conversation(title="快照去重")
+
+    outcome = await runtime.run(
+        conversation_id=conversation.id, user_message="请阅读文档"
+    )
+
+    assert outcome.status is RunStatus.COMPLETED
+    assert len(repositories.list_snapshots(conversation.id)) == 1
+
+
 async def test_repeated_tool_call_ids_do_not_break_persistence(
     repositories: Repositories,
 ) -> None:

@@ -503,6 +503,24 @@ class Repositories:
             session.flush()
             return snapshot.id
 
+    def find_snapshot_id(
+        self, *, conversation_id: str, canonical_url: str, content_hash: str
+    ) -> int | None:
+        """按 (对话, 规范化 URL, 内容哈希) 查找已有快照 ID，用于去重。"""
+
+        with self._session() as session:
+            row = session.execute(
+                select(DocumentSnapshot.id)
+                .where(
+                    DocumentSnapshot.conversation_id == conversation_id,
+                    DocumentSnapshot.canonical_url == canonical_url,
+                    DocumentSnapshot.content_hash == content_hash,
+                )
+                .order_by(DocumentSnapshot.id.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            return int(row) if row is not None else None
+
     def list_snapshots(
         self, conversation_id: str, *, limit: int = 20
     ) -> list[SnapshotRecord]:

@@ -24,7 +24,7 @@ from learning_agent.agent.tool_registry import (
     ToolRegistry,
 )
 from learning_agent.domain.contracts import SourceAllocator, ToolContext
-from learning_agent.domain.entities import SourceReference, UsageRecord
+from learning_agent.domain.entities import DocumentContent, SourceReference, UsageRecord
 from learning_agent.domain.enums import DocumentParseStatus, MessageRole, RunStatus
 from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.models.base import ChatMessage, ModelClient
@@ -437,6 +437,24 @@ class AgentRuntime:
             )
         return documents, notes
 
+    async def _resolve_snapshot_id(
+        self, *, conversation_id: str, document: DocumentContent
+    ) -> int:
+        """复用同 URL 同内容哈希的既有快照，否则新建，避免重复累积。"""
+
+        existing_id = await self._repositories.find_snapshot_id(
+            conversation_id=conversation_id,
+            canonical_url=document.canonical_url,
+            content_hash=document.content_hash,
+        )
+        if existing_id is not None:
+            return existing_id
+        return await self._repositories.add_snapshot(
+            conversation_id=conversation_id,
+            content=document,
+            parse_status=DocumentParseStatus.OK,
+        )
+
     async def _persist_tool_execution(
         self,
         *,
@@ -447,18 +465,17 @@ class AgentRuntime:
         used_tool_call_ids: set[str],
     ) -> None:
         if execution.content is not None and execution.source_id is not None:
-            snapshot_id = await self._repositories.add_snapshot(
-                conversation_id=conversation_id,
-                content=execution.content,
-                parse_status=DocumentParseStatus.OK,
+            document = execution.content
+            snapshot_id = await self._resolve_snapshot_id(
+                conversation_id=conversation_id, document=document
             )
             reference = SourceReference(
                 source_id=execution.source_id,
                 snapshot_id=snapshot_id,
-                canonical_url=execution.content.canonical_url,
-                title=execution.content.title,
-                fetched_at=execution.content.fetched_at,
-                truncated=execution.content.truncated,
+                canonical_url=document.canonical_url,
+                title=document.title,
+                fetched_at=document.fetched_at,
+                truncated=document.truncated,
             )
             await self._repositories.link_run_source(
                 run_id=run_id,

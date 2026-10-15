@@ -168,6 +168,16 @@ class AsyncRepositories:
             parse_status=parse_status,
         )
 
+    async def find_snapshot_id(
+        self, *, conversation_id: str, canonical_url: str, content_hash: str
+    ) -> int | None:
+        return await self._call(
+            self._inner.find_snapshot_id,
+            conversation_id=conversation_id,
+            canonical_url=canonical_url,
+            content_hash=content_hash,
+        )
+
     async def list_snapshots(
         self, conversation_id: str, *, limit: int = 20
     ) -> list[SnapshotRecord]:
