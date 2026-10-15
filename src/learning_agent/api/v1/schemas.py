@@ -59,6 +59,13 @@ class SendMessageResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class RunAcceptedResponse(BaseModel):
+    """异步提交后的受理结果：运行已在后台开始。"""
+
+    run_id: str
+    status: str
+
+
 class ToolCallResponse(BaseModel):
     id: str
     tool_name: str

@@ -115,6 +115,35 @@ class AgentRuntime:
         """执行一次完整运行；请求级错误抛出，运行级失败返回失败结果。"""
 
         run_id = str(uuid.uuid4())
+        await self.begin(
+            run_id=run_id, conversation_id=conversation_id, user_message=user_message
+        )
+        return await self.resume(
+            run_id=run_id, conversation_id=conversation_id, user_message=user_message
+        )
+
+    async def begin(
+        self, *, run_id: str, conversation_id: str, user_message: str
+    ) -> None:
+        """创建运行记录（含用户消息）；已有活动运行时抛 RUN_IN_PROGRESS。
+
+        与 :meth:`resume` 分离，便于后台执行时先同步占位，再异步执行，
+        从而让提交方能立即拿到 ``run_id`` 并轮询。
+        """
+
+        await self._repositories.start_run(
+            run_id=run_id,
+            conversation_id=conversation_id,
+            user_message=user_message,
+            model_name=self._model_name,
+            prompt_version=PROMPT_VERSION,
+        )
+
+    async def resume(
+        self, *, run_id: str, conversation_id: str, user_message: str
+    ) -> RunOutcome:
+        """在运行记录已创建后执行剩余流程，并写入最终结果。"""
+
         run_token = run_id_var.set(run_id)
         conversation_token = conversation_id_var.set(conversation_id)
         started_perf = time.perf_counter()
@@ -123,13 +152,6 @@ class AgentRuntime:
         model_name: str | None = None
         notes: list[str] = []
         try:
-            await self._repositories.start_run(
-                run_id=run_id,
-                conversation_id=conversation_id,
-                user_message=user_message,
-                model_name=self._model_name,
-                prompt_version=PROMPT_VERSION,
-            )
             logger.info("run_started")
             try:
                 content, sources, usage, model_name, notes = await self._execute(

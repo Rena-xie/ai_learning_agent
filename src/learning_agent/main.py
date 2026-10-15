@@ -16,6 +16,7 @@ from learning_agent.agent.tool_registry import ToolRegistry
 from learning_agent.api.errors import register_exception_handlers
 from learning_agent.api.v1.routes import conversations, health, messages, runs, stats
 from learning_agent.application.chat_service import ChatService
+from learning_agent.application.run_scheduler import RunScheduler
 from learning_agent.config import Settings, get_settings
 from learning_agent.models.provider_adapter import OpenAICompatibleModelClient
 from learning_agent.observability.logging import configure_logging, get_logger
@@ -100,10 +101,12 @@ def create_app(
         max_output_tokens=resolved.model_max_output_tokens,
         max_tool_result_chars=resolved.max_tool_result_chars,
     )
+    scheduler = RunScheduler()
     chat_service = ChatService(
         runtime=runtime,
         repositories=async_repositories,
         max_input_chars=resolved.max_input_chars,
+        scheduler=scheduler,
     )
 
     @asynccontextmanager
@@ -121,6 +124,7 @@ def create_app(
         try:
             yield
         finally:
+            await scheduler.shutdown()
             await model_client.aclose()
             engine.dispose()
 
@@ -128,6 +132,7 @@ def create_app(
     app.state.settings = resolved
     app.state.repositories = repositories
     app.state.async_repositories = async_repositories
+    app.state.scheduler = scheduler
     app.state.chat_service = chat_service
     app.state.engine = engine
     register_exception_handlers(app)

@@ -32,6 +32,28 @@ async function api(path, options = {}) {
   return data;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"];
+
+async function waitForRun(runId, timeoutMs = 180000) {
+  const deadline = Date.now() + timeoutMs;
+  let delay = 1000;
+  for (;;) {
+    const run = await api(`/api/v1/runs/${runId}`);
+    if (TERMINAL_RUN_STATUSES.includes(run.status)) {
+      return run;
+    }
+    if (Date.now() > deadline) {
+      throw new Error("运行超时，请稍后在对话中查看结果");
+    }
+    await sleep(delay);
+    delay = Math.min(Math.round(delay * 1.4), 3000);
+  }
+}
+
 function setStatus(text, kind) {
   if (!text) {
     elements.statusBar.hidden = true;
@@ -201,13 +223,19 @@ async function sendMessage(event) {
     });
     elements.input.value = "";
     renderMessages();
-    const result = await api(
-      `/api/v1/conversations/${state.currentId}/messages`,
+    const accepted = await api(
+      `/api/v1/conversations/${state.currentId}/messages?mode=async`,
       { method: "POST", body: JSON.stringify({ content }) },
     );
+    setStatus("运行中：正在获取文档并生成回答…", "loading");
+    const run = await waitForRun(accepted.run_id);
     await loadMessages(state.currentId);
     await loadConversations();
-    setStatus(`运行完成（${result.status}）`, "ok");
+    if (run.status === "completed") {
+      setStatus("运行完成", "ok");
+    } else {
+      setStatus(`运行未完成（${run.error_code || run.status}）`, "error");
+    }
   } catch (error) {
     if (state.currentId) {
       await loadMessages(state.currentId).catch(() => {});

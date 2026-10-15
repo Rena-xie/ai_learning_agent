@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 
 from learning_agent.api.v1.schemas import (
     ErrorDetail,
     MessageCreateRequest,
     MessageWithSourcesResponse,
+    RunAcceptedResponse,
     SendMessageResponse,
     SourceResponse,
 )
@@ -37,7 +38,22 @@ async def create_message(
     payload: MessageCreateRequest,
     service: Annotated[ChatService, Depends(get_chat_service)],
     repositories: Annotated[AsyncRepositories, Depends(get_repositories)],
+    mode: Annotated[Literal["sync", "async"], Query()] = "sync",
 ) -> JSONResponse:
+    """提交一条用户消息。
+
+    默认 ``mode=sync``：等待运行结束后返回最终结果；
+    ``mode=async``：立即返回 202 与 ``run_id``，运行在后台执行，
+    调用方轮询 ``GET /api/v1/runs/{run_id}`` 获取进度与结果。
+    """
+
+    if mode == "async":
+        run_id = await service.start_run(
+            conversation_id=conversation_id, content=payload.content
+        )
+        accepted = RunAcceptedResponse(run_id=run_id, status=RunStatus.RUNNING.value)
+        return JSONResponse(status_code=202, content=accepted.model_dump(mode="json"))
+
     outcome = await service.submit_message(
         conversation_id=conversation_id, content=payload.content
     )
