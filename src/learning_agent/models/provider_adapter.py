@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
+#: 上下文超限错误的识别标志（DeepSeek / OpenAI 均以 HTTP 400 返回）
+_CONTEXT_LENGTH_MARKERS = (
+    "maximum context length",
+    "context_length_exceeded",
+    "context length",
+    "reduce the length",
+    "too many tokens",
+)
+
 
 class OpenAICompatibleModelClient:
     """通过 OpenAI 兼容接口调用单一模型供应商。
@@ -114,12 +123,43 @@ def _map_error(exc: Exception) -> ModelError:
             ErrorCode.MODEL_ERROR, "无法连接模型服务，请检查网络与模型配置"
         )
     if isinstance(exc, openai.APIStatusError):
+        if _is_context_length_error(exc):
+            return ModelError(
+                ErrorCode.MODEL_CONTEXT_EXCEEDED,
+                "对话上下文已超出模型上限，请缩短问题或开启新对话",
+                detail=f"status={exc.status_code}",
+            )
         return ModelError(
             ErrorCode.MODEL_ERROR,
             f"模型服务返回错误（HTTP {exc.status_code}）",
             detail=f"status={exc.status_code}",
         )
     return ModelError(ErrorCode.MODEL_ERROR, "模型调用失败", detail=type(exc).__name__)
+
+
+def _is_context_length_error(exc: openai.APIStatusError) -> bool:
+    """判断是否为“超出模型上下文长度”类错误（HTTP 400）。"""
+
+    if exc.status_code != 400:
+        return False
+    text = _status_error_text(exc)
+    return any(marker in text for marker in _CONTEXT_LENGTH_MARKERS)
+
+
+def _status_error_text(exc: openai.APIStatusError) -> str:
+    """汇总错误对象的可读文本用于分类（仅内部使用，不返回给用户）。"""
+
+    parts = [str(exc)]
+    body = getattr(exc, "body", None)
+    if body is not None:
+        parts.append(str(body))
+    response = getattr(exc, "response", None)
+    if response is not None:
+        try:
+            parts.append(response.text)
+        except Exception:  # noqa: BLE001 - 读取响应正文失败不影响错误分类
+            pass
+    return " ".join(parts).lower()
 
 
 def _parse_response(response: Any, *, fallback_model: str) -> ModelResponse:

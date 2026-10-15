@@ -49,6 +49,7 @@ class ErrorCode(StrEnum):
     MODEL_TIMEOUT = "model_timeout"
     MODEL_RATE_LIMITED = "model_rate_limited"
     MODEL_ERROR = "model_error"
+    MODEL_CONTEXT_EXCEEDED = "model_context_exceeded"
 
     PERSISTENCE_ERROR = "persistence_error"
     CONFIGURATION_ERROR = "configuration_error"
@@ -74,6 +75,7 @@ _ERROR_CATEGORY: dict[ErrorCode, ErrorCategory] = {
     ErrorCode.MODEL_TIMEOUT: ErrorCategory.MODEL,
     ErrorCode.MODEL_RATE_LIMITED: ErrorCategory.MODEL,
     ErrorCode.MODEL_ERROR: ErrorCategory.MODEL,
+    ErrorCode.MODEL_CONTEXT_EXCEEDED: ErrorCategory.RESOURCE_LIMIT,
     ErrorCode.PERSISTENCE_ERROR: ErrorCategory.PERSISTENCE,
     ErrorCode.CONFIGURATION_ERROR: ErrorCategory.INTERNAL,
     ErrorCode.INTERNAL_ERROR: ErrorCategory.INTERNAL,
@@ -98,6 +100,7 @@ _ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.MODEL_TIMEOUT: 504,
     ErrorCode.MODEL_RATE_LIMITED: 429,
     ErrorCode.MODEL_ERROR: 502,
+    ErrorCode.MODEL_CONTEXT_EXCEEDED: 413,
     ErrorCode.PERSISTENCE_ERROR: 500,
     ErrorCode.CONFIGURATION_ERROR: 500,
     ErrorCode.INTERNAL_ERROR: 500,

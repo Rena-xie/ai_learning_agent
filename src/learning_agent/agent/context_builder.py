@@ -1,7 +1,8 @@
 """上下文组装与 Token 预算管理。
 
-预算为近似估算（DeepSeek 官方量级：中文约 0.6 token/字、英文约 0.3 token/字符），
-按上限估算并在超预算时优先保留当前问题与最近文档，所有截断都会显式标注。
+预算为近似估算（中文约 0.9 token/字、英文约 0.3 token/字符），再乘以可配置的安全系数
+（``token_safety_factor``）以缓解低估；超预算时优先保留当前问题与最近文档，
+所有截断都会显式标注。
 """
 
 from __future__ import annotations
@@ -19,20 +20,21 @@ _CJK_RANGES = (
     (0x3000, 0x303F),
     (0xFF00, 0xFFEF),
 )
-_CJK_TOKEN_RATIO = 0.6
+_CJK_TOKEN_RATIO = 0.9
 _OTHER_TOKEN_RATIO = 0.3
 _TOKENS_TO_CHARS = 1.6
 _DOCUMENT_OVERHEAD_TOKENS = 60
 
 
-def estimate_tokens(text: str) -> int:
-    """近似估算 token 数量（保守上限）。"""
+def estimate_tokens(text: str, *, safety_factor: float = 1.0) -> int:
+    """近似估算 token 数量（按上限估算，可乘以安全系数）。"""
 
     if not text:
         return 0
     cjk = sum(1 for ch in text if _is_cjk(ch))
     other = len(text) - cjk
-    return int(cjk * _CJK_TOKEN_RATIO + other * _OTHER_TOKEN_RATIO) + 1
+    raw = (cjk * _CJK_TOKEN_RATIO + other * _OTHER_TOKEN_RATIO) * safety_factor
+    return int(raw) + 1
 
 
 def _is_cjk(ch: str) -> bool:
@@ -73,12 +75,19 @@ class ContextBuilder:
         output_reserve_tokens: int,
         tool_schema_reserve_tokens: int = 1200,
         max_document_chars: int = 24_000,
+        token_safety_factor: float = 1.0,
     ) -> None:
         self._max_tokens = max_tokens
         self._max_history_messages = max_history_messages
         self._output_reserve_tokens = output_reserve_tokens
         self._tool_schema_reserve_tokens = tool_schema_reserve_tokens
         self._max_document_chars = max_document_chars
+        self._token_safety_factor = token_safety_factor
+
+    def _estimate(self, text: str) -> int:
+        """按本实例的安全系数估算 token 数。"""
+
+        return estimate_tokens(text, safety_factor=self._token_safety_factor)
 
     def build(
         self,
@@ -93,10 +102,10 @@ class ContextBuilder:
             self._max_tokens
             - self._output_reserve_tokens
             - self._tool_schema_reserve_tokens
-            - estimate_tokens(system_prompt)
-            - estimate_tokens(user_message)
+            - self._estimate(system_prompt)
+            - self._estimate(user_message)
         )
-        user_tokens = estimate_tokens(user_message)
+        user_tokens = self._estimate(user_message)
         if user_tokens > budget:
             raise AppError(
                 ErrorCode.CONTEXT_BUDGET_EXCEEDED,
@@ -105,7 +114,7 @@ class ContextBuilder:
 
         selected_history: list[ChatMessage] = []
         for message in reversed(history[-self._max_history_messages :]):
-            cost = estimate_tokens(message.content or "") + 8
+            cost = self._estimate(message.content or "") + 8
             if cost > budget:
                 notes.append("较早的对话历史因上下文预算被省略")
                 break
@@ -119,7 +128,7 @@ class ContextBuilder:
             text, truncated = _fit_document(
                 document.text, self._max_document_chars, budget
             )
-            cost = estimate_tokens(text) + _DOCUMENT_OVERHEAD_TOKENS
+            cost = self._estimate(text) + _DOCUMENT_OVERHEAD_TOKENS
             if cost > budget:
                 notes.append("部分已获取文档因上下文预算未送入模型，回答可能不完整")
                 break

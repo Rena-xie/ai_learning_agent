@@ -64,6 +64,8 @@ class Settings(BaseSettings):
 
     # ---------- 上下文与输入 ----------
     context_max_tokens: int = Field(default=24_000, ge=1_000, le=200_000)
+    #: 上下文 token 估算的安全系数：估算值乘以该系数，缓解低估导致超出模型上下文
+    context_token_safety_factor: float = Field(default=1.15, ge=1.0, le=2.0)
     max_history_messages: int = Field(default=20, ge=0, le=200)
     max_input_chars: int = Field(default=4_000, ge=1, le=100_000)
 

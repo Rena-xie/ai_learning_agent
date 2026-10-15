@@ -36,6 +36,20 @@ _COMPLETION_BODY = json.dumps(
 
 _MESSAGES = [ChatMessage(role="user", content="你好")]
 
+_CONTEXT_ERROR_BODY = json.dumps(
+    {
+        "error": {
+            "message": (
+                "This model's maximum context length is 65536 tokens. "
+                "However, your messages resulted in 70000 tokens. "
+                "Please reduce the length of the messages."
+            ),
+            "type": "invalid_request_error",
+            "code": "context_length_exceeded",
+        }
+    }
+).encode("utf-8")
+
 
 def deepseek_client(
     settings: Settings, *, api_key: str, model_name: str, max_retries: int = 0
@@ -194,3 +208,35 @@ async def test_unreachable_endpoint_maps_to_model_error() -> None:
     finally:
         await client.aclose()
     assert excinfo.value.code is ErrorCode.MODEL_ERROR
+
+
+async def test_context_length_error_maps_to_context_exceeded(
+    local_server: LocalDocServer,
+) -> None:
+    """本地可控端点：400 + 上下文超限正文映射为 model_context_exceeded。"""
+
+    path = "/v1/chat/completions"
+    local_server.add_post_sequence(
+        path,
+        [
+            Route(
+                status=400,
+                content_type="application/json",
+                body=_CONTEXT_ERROR_BODY,
+            )
+        ],
+    )
+    client = OpenAICompatibleModelClient(
+        api_key="test-key",
+        base_url=f"http://127.0.0.1:{local_server.port}/v1",
+        model_name="test-model",
+        max_retries=0,
+    )
+    try:
+        with pytest.raises(AppError) as excinfo:
+            await client.complete(
+                messages=_MESSAGES, tools=[], max_output_tokens=16, timeout_seconds=10
+            )
+    finally:
+        await client.aclose()
+    assert excinfo.value.code is ErrorCode.MODEL_CONTEXT_EXCEEDED

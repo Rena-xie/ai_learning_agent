@@ -6,7 +6,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from learning_agent.agent.context_builder import ContextBuilder, DocumentContext
+from learning_agent.agent.context_builder import (
+    ContextBuilder,
+    DocumentContext,
+    estimate_tokens,
+)
 from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.models.base import ChatMessage
 
@@ -87,5 +91,30 @@ def test_oversized_question_is_rejected() -> None:
             history=[],
             user_message="非常长的问题" * 200,
             documents=[],
+        )
+    assert excinfo.value.code is ErrorCode.CONTEXT_BUDGET_EXCEEDED
+
+
+def test_token_safety_factor_increases_estimate() -> None:
+    text = "这是一段用于验证安全系数的中文文本"
+    assert estimate_tokens(text, safety_factor=1.5) > estimate_tokens(text)
+
+
+def test_safety_factor_shrinks_effective_budget() -> None:
+    question = "中文问题" * 40
+    lenient = make_builder(
+        max_tokens=400, output_reserve_tokens=20, token_safety_factor=1.0
+    )
+    strict = make_builder(
+        max_tokens=400, output_reserve_tokens=20, token_safety_factor=1.6
+    )
+    # 无安全系数时该问题可通过预算校验
+    lenient.build(
+        system_prompt="系统", history=[], user_message=question, documents=[]
+    )
+    # 提高安全系数后，同一问题被判为超出预算
+    with pytest.raises(AppError) as excinfo:
+        strict.build(
+            system_prompt="系统", history=[], user_message=question, documents=[]
         )
     assert excinfo.value.code is ErrorCode.CONTEXT_BUDGET_EXCEEDED

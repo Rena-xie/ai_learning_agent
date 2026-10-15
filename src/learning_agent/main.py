@@ -84,6 +84,7 @@ def create_app(
         max_tokens=resolved.context_max_tokens,
         max_history_messages=resolved.max_history_messages,
         output_reserve_tokens=resolved.model_max_output_tokens,
+        token_safety_factor=resolved.context_token_safety_factor,
     )
     runtime = AgentRuntime(
         model_client=model_client,
