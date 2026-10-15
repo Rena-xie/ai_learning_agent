@@ -82,6 +82,7 @@ def create_app(
         base_url=resolved.model_base_url,
         model_name=resolved.model_name,
         max_retries=resolved.model_max_retries,
+        temperature=resolved.model_temperature,
     )
     context_builder = ContextBuilder(
         max_tokens=resolved.context_max_tokens,

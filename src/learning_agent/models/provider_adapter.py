@@ -44,10 +44,12 @@ class OpenAICompatibleModelClient:
         model_name: str,
         max_retries: int = 2,
         backoff_seconds: float = 0.5,
+        temperature: float | None = None,
     ) -> None:
         self._model_name = model_name
         self._max_retries = max_retries
         self._backoff_seconds = backoff_seconds
+        self._temperature = temperature
         self._client = AsyncOpenAI(
             api_key=api_key, base_url=base_url, max_retries=0, timeout=None
         )
@@ -75,6 +77,8 @@ class OpenAICompatibleModelClient:
         if tools:
             request["tools"] = list(tools)
             request["tool_choice"] = "auto"
+        if self._temperature is not None:
+            request["temperature"] = self._temperature
 
         last_error: Exception | None = None
         for attempt in range(self._max_retries + 1):

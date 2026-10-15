@@ -29,5 +29,6 @@ uv run python -m evals.run_eval --case url_only       # 单个案例
 uv run python -m evals.run_eval --baseline evals/results/baseline-20261013.json
 ```
 
-`--baseline` 会把本次结果与基线逐案例比较，凡「基线通过、本次失败」的案例都会列出，
-并以非零退出码结束，用于 Prompt、模型适配、工具或解析逻辑改动后的回归判定。
+`--baseline` 会把本次结果与基线比较：逐案例「基线通过、本次失败」，以及**整体通过率下降**，
+任一命中都会列出并以非零退出码结束，用于 Prompt、模型适配、工具或解析逻辑改动后的回归判定。
+评估运行默认固定 `MODEL_TEMPERATURE=0` 以提升可复现性（可在案例的 `settings` 中覆盖）。

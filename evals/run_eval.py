@@ -28,6 +28,7 @@ from tests.support.local_doc_server import (
 )
 
 from evals.checks import run_checks
+from evals.regression import find_regressions
 from learning_agent.config import Settings
 from learning_agent.main import create_app
 
@@ -46,6 +47,8 @@ def build_settings(
 ) -> Settings:
     overrides: dict[str, object] = {
         "database_url": f"sqlite:///{(workdir / (case['id'] + '.db')).as_posix()}",
+        # 评估默认固定采样温度，提升回归可复现性（案例可用 settings 覆盖）
+        "model_temperature": 0.0,
     }
     if server is not None:
         overrides["allowed_document_hosts"] = (TEST_HOST,)
@@ -155,13 +158,10 @@ async def run_all(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def compare_with_baseline(
     outcomes: list[dict[str, Any]], baseline_path: Path
 ) -> list[str]:
+    """读取基线并比较，返回回归描述（判定逻辑见 ``evals.regression``）。"""
+
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-    previous = {item["case_id"]: item["passed"] for item in baseline.get("cases", [])}
-    return [
-        item["case_id"]
-        for item in outcomes
-        if previous.get(item["case_id"]) is True and not item["passed"]
-    ]
+    return find_regressions(outcomes, baseline)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -207,7 +207,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.baseline:
         regressions = compare_with_baseline(outcomes, Path(args.baseline))
         if regressions:
-            print("检测到回归（基线通过但本次失败）：" + ", ".join(regressions))
+            print("检测到回归：")
+            for item in regressions:
+                print(f"  - {item}")
             return 1
         print("与基线比较：无回归")
 
