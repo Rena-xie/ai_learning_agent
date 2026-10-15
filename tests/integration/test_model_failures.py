@@ -36,6 +36,17 @@ _COMPLETION_BODY = json.dumps(
 
 _MESSAGES = [ChatMessage(role="user", content="你好")]
 
+_EMPTY_CHOICES_BODY = json.dumps(
+    {
+        "id": "chatcmpl-empty",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "test-model",
+        "choices": [],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 0, "total_tokens": 3},
+    }
+).encode("utf-8")
+
 _CONTEXT_ERROR_BODY = json.dumps(
     {
         "error": {
@@ -204,6 +215,38 @@ async def test_unreachable_endpoint_maps_to_model_error() -> None:
         with pytest.raises(AppError) as excinfo:
             await client.complete(
                 messages=_MESSAGES, tools=[], max_output_tokens=16, timeout_seconds=5
+            )
+    finally:
+        await client.aclose()
+    assert excinfo.value.code is ErrorCode.MODEL_ERROR
+
+
+async def test_empty_choices_maps_to_model_error(
+    local_server: LocalDocServer,
+) -> None:
+    """本地可控端点：200 但 choices 为空时映射为 model_error，而非内部错误。"""
+
+    path = "/v1/chat/completions"
+    local_server.add_post_sequence(
+        path,
+        [
+            Route(
+                status=200,
+                content_type="application/json",
+                body=_EMPTY_CHOICES_BODY,
+            )
+        ],
+    )
+    client = OpenAICompatibleModelClient(
+        api_key="test-key",
+        base_url=f"http://127.0.0.1:{local_server.port}/v1",
+        model_name="test-model",
+        max_retries=0,
+    )
+    try:
+        with pytest.raises(AppError) as excinfo:
+            await client.complete(
+                messages=_MESSAGES, tools=[], max_output_tokens=16, timeout_seconds=10
             )
     finally:
         await client.aclose()

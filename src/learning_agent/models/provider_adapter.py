@@ -163,6 +163,8 @@ def _status_error_text(exc: openai.APIStatusError) -> str:
 
 
 def _parse_response(response: Any, *, fallback_model: str) -> ModelResponse:
+    if not response.choices:
+        raise ModelError(ErrorCode.MODEL_ERROR, "模型没有返回任何结果，请重试")
     choice = response.choices[0]
     message = choice.message
     tool_calls = tuple(
