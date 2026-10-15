@@ -84,6 +84,32 @@ def _add_optional(
     return left + right
 
 
+def estimate_cost(
+    usage: UsageRecord,
+    *,
+    input_price_per_1k: float,
+    output_price_per_1k: float,
+) -> UsageRecord:
+    """按单价估算成本，返回带 ``estimated_cost`` 的新记录。
+
+    未配置单价、或 token 用量未知时，保持 ``estimated_cost`` 为 None，不编造成本。
+    """
+
+    if input_price_per_1k <= 0 and output_price_per_1k <= 0:
+        return usage
+    if usage.input_tokens is None or usage.output_tokens is None:
+        return usage
+    cost = (
+        usage.input_tokens / 1000 * input_price_per_1k
+        + usage.output_tokens / 1000 * output_price_per_1k
+    )
+    return UsageRecord(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        estimated_cost=round(cost, 6),
+    )
+
+
 @dataclass(frozen=True)
 class ToolCallRecord:
     """一次工具调用的持久化摘要。"""

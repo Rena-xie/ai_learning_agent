@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     model_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
     model_max_retries: int = Field(default=2, ge=0, le=5)
     model_max_output_tokens: int = Field(default=2000, ge=64, le=32000)
+    # 成本估算单价（元/千 token）；默认 0 表示不计算成本
+    model_price_input_per_1k: float = Field(default=0.0, ge=0)
+    model_price_output_per_1k: float = Field(default=0.0, ge=0)
 
     # ---------- 文档白名单与获取 ----------
     allowed_document_hosts: Annotated[tuple[str, ...], NoDecode] = ()

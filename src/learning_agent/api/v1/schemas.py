@@ -109,6 +109,7 @@ class RunStatsResponse(BaseModel):
     duration_ms_p50: int | None = None
     input_tokens_total: int
     output_tokens_total: int
+    estimated_cost_total: float | None = None
     tool_calls_total: int
     tool_calls_failed: int
     document_fetches_total: int

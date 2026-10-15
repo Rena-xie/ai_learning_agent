@@ -24,7 +24,12 @@ from learning_agent.agent.tool_registry import (
     ToolRegistry,
 )
 from learning_agent.domain.contracts import SourceAllocator, ToolContext
-from learning_agent.domain.entities import DocumentContent, SourceReference, UsageRecord
+from learning_agent.domain.entities import (
+    DocumentContent,
+    SourceReference,
+    UsageRecord,
+    estimate_cost,
+)
 from learning_agent.domain.enums import DocumentParseStatus, MessageRole, RunStatus
 from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.models.base import ChatMessage, ModelClient
@@ -99,6 +104,8 @@ class AgentRuntime:
         max_tool_calls: int,
         max_output_tokens: int,
         max_tool_result_chars: int,
+        price_input_per_1k: float = 0.0,
+        price_output_per_1k: float = 0.0,
     ) -> None:
         self._model = model_client
         self._tools = tools
@@ -110,6 +117,17 @@ class AgentRuntime:
         self._max_tool_calls = max_tool_calls
         self._max_output_tokens = max_output_tokens
         self._max_tool_result_chars = max_tool_result_chars
+        self._price_input_per_1k = price_input_per_1k
+        self._price_output_per_1k = price_output_per_1k
+
+    def _apply_cost(self, usage: UsageRecord) -> UsageRecord:
+        """按配置单价补全成本；未配置单价时保持 None。"""
+
+        return estimate_cost(
+            usage,
+            input_price_per_1k=self._price_input_per_1k,
+            output_price_per_1k=self._price_output_per_1k,
+        )
 
     async def run(self, *, conversation_id: str, user_message: str) -> RunOutcome:
         """执行一次完整运行；请求级错误抛出，运行级失败返回失败结果。"""
@@ -197,6 +215,7 @@ class AgentRuntime:
                 )
 
             duration_ms = int((time.perf_counter() - started_perf) * 1000)
+            usage = self._apply_cost(usage)
             await self._repositories.complete_run(
                 run_id=run_id,
                 conversation_id=conversation_id,
@@ -521,6 +540,7 @@ class AgentRuntime:
         model_name: str | None,
     ) -> RunOutcome:
         duration_ms = int((time.perf_counter() - started_perf) * 1000)
+        usage = self._apply_cost(usage)
         try:
             await self._repositories.finish_run(
                 run_id=run_id,

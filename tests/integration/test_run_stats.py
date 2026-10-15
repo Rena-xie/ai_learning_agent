@@ -98,3 +98,31 @@ async def test_stats_aggregate_runs_and_tools(tmp_path) -> None:
     assert body["document_fetches_total"] == 2
     assert body["document_fetch_success_rate"] == 0.5
     assert body["error_codes"] == {"run_timeout": 1}
+    # 未配置单价时成本保持为空，不编造
+    assert body["estimated_cost_total"] is None
+
+
+async def test_stats_include_estimated_cost(tmp_path) -> None:
+    app = create_app(make_settings(tmp_path))
+    repositories = app.state.repositories
+    conversation = repositories.create_conversation(title="成本")
+    run_id = "bbbbbbbb-0000-0000-0000-000000000001"
+    repositories.create_run(
+        run_id=run_id,
+        conversation_id=conversation.id,
+        model_name="test-model",
+        prompt_version="v1",
+    )
+    repositories.finish_run(
+        run_id=run_id,
+        status=RunStatus.COMPLETED,
+        usage=UsageRecord(
+            input_tokens=1000, output_tokens=500, estimated_cost=0.002
+        ),
+        duration_ms=100,
+    )
+
+    async with running_client(app) as client:
+        response = await client.get("/api/v1/stats")
+
+    assert response.json()["estimated_cost_total"] == 0.002

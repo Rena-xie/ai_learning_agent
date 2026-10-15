@@ -100,6 +100,8 @@ def create_app(
         max_tool_calls=resolved.max_tool_calls,
         max_output_tokens=resolved.model_max_output_tokens,
         max_tool_result_chars=resolved.max_tool_result_chars,
+        price_input_per_1k=resolved.model_price_input_per_1k,
+        price_output_per_1k=resolved.model_price_output_per_1k,
     )
     scheduler = RunScheduler()
     chat_service = ChatService(

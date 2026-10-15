@@ -567,6 +567,9 @@ class Repositories:
         durations = sorted(
             run.duration_ms for run in runs if run.duration_ms is not None
         )
+        costs = [
+            run.estimated_cost for run in runs if run.estimated_cost is not None
+        ]
         error_counts: dict[str, int] = {}
         for run in runs:
             if run.error_code:
@@ -591,6 +594,7 @@ class Repositories:
             "duration_ms_p50": durations[len(durations) // 2] if durations else None,
             "input_tokens_total": sum(run.input_tokens or 0 for run in runs),
             "output_tokens_total": sum(run.output_tokens or 0 for run in runs),
+            "estimated_cost_total": round(sum(costs), 6) if costs else None,
             "tool_calls_total": len(tool_calls),
             "tool_calls_failed": sum(
                 1
