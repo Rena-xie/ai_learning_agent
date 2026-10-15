@@ -18,7 +18,7 @@ from learning_agent.api.v1.schemas import (
 from learning_agent.application.chat_service import ChatService
 from learning_agent.domain.enums import RunStatus
 from learning_agent.domain.errors import ErrorCode, http_status_for
-from learning_agent.persistence.repositories import Repositories
+from learning_agent.persistence.async_repositories import AsyncRepositories
 
 router = APIRouter(prefix="/api/v1/conversations", tags=["messages"])
 
@@ -27,8 +27,8 @@ def get_chat_service(request: Request) -> ChatService:
     return request.app.state.chat_service
 
 
-def get_repositories(request: Request) -> Repositories:
-    return request.app.state.repositories
+def get_repositories(request: Request) -> AsyncRepositories:
+    return request.app.state.async_repositories
 
 
 @router.post("/{conversation_id}/messages")
@@ -36,7 +36,7 @@ async def create_message(
     conversation_id: str,
     payload: MessageCreateRequest,
     service: Annotated[ChatService, Depends(get_chat_service)],
-    repositories: Annotated[Repositories, Depends(get_repositories)],
+    repositories: Annotated[AsyncRepositories, Depends(get_repositories)],
 ) -> JSONResponse:
     outcome = await service.submit_message(
         conversation_id=conversation_id, content=payload.content
@@ -71,7 +71,7 @@ async def create_message(
             content=body.model_dump(mode="json"),
         )
 
-    message_record = repositories.get_message_by_run(
+    message_record = await repositories.get_message_by_run(
         conversation_id=conversation_id, run_id=outcome.run_id
     )
     body = SendMessageResponse(

@@ -257,6 +257,89 @@ class Repositories:
                 raise AppError(ErrorCode.NOT_FOUND, "运行记录不存在")
             run.status = RunStatus.RUNNING.value
 
+    def start_run(
+        self,
+        *,
+        run_id: str,
+        conversation_id: str,
+        user_message: str,
+        model_name: str,
+        prompt_version: str,
+    ) -> None:
+        """一次事务完成：创建运行、写入用户消息并置为 running。
+
+        替代 create_run + add_message + mark_run_running 的三次提交，
+        减少中间态与数据库往返；冲突时同样以「单对话单活动运行」约束拒绝。
+        """
+
+        with self._session() as session:
+            conversation = session.get(Conversation, conversation_id)
+            if conversation is None:
+                raise AppError(ErrorCode.NOT_FOUND, "对话不存在或已被删除")
+            session.add(
+                AgentRun(
+                    id=run_id,
+                    conversation_id=conversation_id,
+                    status=RunStatus.RUNNING.value,
+                    model_name=model_name,
+                    prompt_version=prompt_version,
+                    started_at=utcnow(),
+                )
+            )
+            session.add(
+                Message(
+                    conversation_id=conversation_id,
+                    role=MessageRole.USER.value,
+                    content=user_message,
+                    run_id=run_id,
+                )
+            )
+            conversation.updated_at = utcnow()
+            try:
+                session.flush()
+            except IntegrityError as exc:
+                session.rollback()
+                raise AppError(
+                    ErrorCode.RUN_IN_PROGRESS,
+                    "该对话已有正在进行的运行，请等待完成后再发送消息",
+                ) from exc
+
+    def complete_run(
+        self,
+        *,
+        run_id: str,
+        conversation_id: str,
+        content: str,
+        usage: UsageRecord,
+        model_name: str | None,
+        duration_ms: int,
+    ) -> None:
+        """一次事务完成：写入助手消息并把运行置为 completed。"""
+
+        with self._session() as session:
+            run = session.get(AgentRun, run_id)
+            if run is None:
+                raise AppError(ErrorCode.NOT_FOUND, "运行记录不存在")
+            conversation = session.get(Conversation, conversation_id)
+            session.add(
+                Message(
+                    conversation_id=conversation_id,
+                    role=MessageRole.ASSISTANT.value,
+                    content=content,
+                    run_id=run_id,
+                )
+            )
+            if conversation is not None:
+                conversation.updated_at = utcnow()
+            run.status = RunStatus.COMPLETED.value
+            run.finished_at = utcnow()
+            run.duration_ms = duration_ms
+            run.input_tokens = usage.input_tokens
+            run.output_tokens = usage.output_tokens
+            run.estimated_cost = usage.estimated_cost
+            if model_name:
+                run.model_name = model_name
+
     def finish_run(
         self,
         *,

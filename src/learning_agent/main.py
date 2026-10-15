@@ -19,6 +19,7 @@ from learning_agent.application.chat_service import ChatService
 from learning_agent.config import Settings, get_settings
 from learning_agent.models.provider_adapter import OpenAICompatibleModelClient
 from learning_agent.observability.logging import configure_logging, get_logger
+from learning_agent.persistence.async_repositories import AsyncRepositories
 from learning_agent.persistence.database import build_engine, build_session_factory
 from learning_agent.persistence.migrations import apply_migrations
 from learning_agent.persistence.repositories import Repositories
@@ -50,6 +51,7 @@ def create_app(
     apply_migrations(resolved.database_url)
     engine = build_engine(resolved.database_url)
     repositories = Repositories(build_session_factory(engine))
+    async_repositories = AsyncRepositories(repositories)
     recovered_runs = repositories.fail_stale_runs()
     if recovered_runs:
         logger.warning(
@@ -90,7 +92,7 @@ def create_app(
         model_client=model_client,
         tools=tool_registry,
         context_builder=context_builder,
-        repositories=repositories,
+        repositories=async_repositories,
         model_timeout_seconds=resolved.model_timeout_seconds,
         run_timeout_seconds=resolved.run_timeout_seconds,
         max_model_rounds=resolved.max_model_rounds,
@@ -100,7 +102,7 @@ def create_app(
     )
     chat_service = ChatService(
         runtime=runtime,
-        repositories=repositories,
+        repositories=async_repositories,
         max_input_chars=resolved.max_input_chars,
     )
 
@@ -125,6 +127,7 @@ def create_app(
     app = FastAPI(title="AI Learning Agent", version="0.1.0", lifespan=lifespan)
     app.state.settings = resolved
     app.state.repositories = repositories
+    app.state.async_repositories = async_repositories
     app.state.chat_service = chat_service
     app.state.engine = engine
     register_exception_handlers(app)

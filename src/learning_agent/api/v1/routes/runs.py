@@ -8,20 +8,20 @@ from fastapi import APIRouter, Depends, Request
 
 from learning_agent.api.v1.schemas import RunResponse, SourceResponse, ToolCallResponse
 from learning_agent.domain.errors import AppError, ErrorCode
-from learning_agent.persistence.repositories import Repositories
+from learning_agent.persistence.async_repositories import AsyncRepositories
 
 router = APIRouter(prefix="/api/v1/runs", tags=["runs"])
 
 
-def get_repositories(request: Request) -> Repositories:
-    return request.app.state.repositories
+def get_repositories(request: Request) -> AsyncRepositories:
+    return request.app.state.async_repositories
 
 
 @router.get("/{run_id}", response_model=RunResponse)
 async def get_run(
-    run_id: str, repositories: Annotated[Repositories, Depends(get_repositories)]
+    run_id: str, repositories: Annotated[AsyncRepositories, Depends(get_repositories)]
 ) -> RunResponse:
-    run = repositories.get_run(run_id)
+    run = await repositories.get_run(run_id)
     if run is None:
         raise AppError(ErrorCode.NOT_FOUND, "运行记录不存在")
     return RunResponse(

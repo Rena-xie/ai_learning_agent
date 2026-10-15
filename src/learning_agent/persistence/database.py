@@ -22,14 +22,18 @@ def build_engine(database_url: str, *, echo: bool = False) -> Engine:
         database_url, echo=echo, connect_args=connect_args, pool_pre_ping=True
     )
     if url.get_backend_name() == "sqlite":
-        event.listen(engine, "connect", _enable_sqlite_foreign_keys)
+        event.listen(engine, "connect", _configure_sqlite)
     return engine
 
 
-def _enable_sqlite_foreign_keys(dbapi_connection: object, _record: object) -> None:
+def _configure_sqlite(dbapi_connection: object, _record: object) -> None:
+    """连接级 PRAGMA：外键约束、WAL 与写锁等待，缓解并发写竞争。"""
+
     cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
     try:
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
     finally:
         cursor.close()
 

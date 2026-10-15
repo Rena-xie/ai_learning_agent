@@ -12,6 +12,7 @@ from learning_agent.config import Settings
 from learning_agent.domain.contracts import ToolContext
 from learning_agent.domain.enums import RunStatus
 from learning_agent.models.provider_adapter import OpenAICompatibleModelClient
+from learning_agent.persistence.async_repositories import AsyncRepositories
 from learning_agent.persistence.database import build_engine, build_session_factory
 from learning_agent.persistence.migrations import apply_migrations
 from learning_agent.persistence.repositories import Repositories
@@ -112,7 +113,7 @@ async def test_prompt_injection_in_document_does_not_break_boundaries(
         context_builder=ContextBuilder(
             max_tokens=8_000, max_history_messages=6, output_reserve_tokens=1_000
         ),
-        repositories=repositories,
+        repositories=AsyncRepositories(repositories),
         model_timeout_seconds=90.0,
         run_timeout_seconds=180.0,
         max_model_rounds=4,

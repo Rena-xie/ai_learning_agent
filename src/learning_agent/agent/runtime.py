@@ -123,19 +123,13 @@ class AgentRuntime:
         model_name: str | None = None
         notes: list[str] = []
         try:
-            self._repositories.create_run(
+            await self._repositories.start_run(
                 run_id=run_id,
                 conversation_id=conversation_id,
+                user_message=user_message,
                 model_name=self._model_name,
                 prompt_version=PROMPT_VERSION,
             )
-            self._repositories.add_message(
-                conversation_id=conversation_id,
-                role=MessageRole.USER.value,
-                content=user_message,
-                run_id=run_id,
-            )
-            self._repositories.mark_run_running(run_id)
             logger.info("run_started")
             try:
                 content, sources, usage, model_name, notes = await self._execute(
@@ -150,7 +144,7 @@ class AgentRuntime:
                     "本次运行超出总时限，已停止；请稍后重试或缩小问题范围",
                     detail=type(exc).__name__,
                 )
-                return self._finish_failure(
+                return await self._finish_failure(
                     run_id=run_id,
                     exc=timeout_error,
                     started_perf=started_perf,
@@ -158,7 +152,7 @@ class AgentRuntime:
                     model_name=model_name,
                 )
             except AppError as exc:
-                return self._finish_failure(
+                return await self._finish_failure(
                     run_id=run_id,
                     exc=exc,
                     started_perf=started_perf,
@@ -172,7 +166,7 @@ class AgentRuntime:
                     "服务内部错误，本次运行已停止",
                     detail=type(exc).__name__,
                 )
-                return self._finish_failure(
+                return await self._finish_failure(
                     run_id=run_id,
                     exc=internal,
                     started_perf=started_perf,
@@ -181,15 +175,10 @@ class AgentRuntime:
                 )
 
             duration_ms = int((time.perf_counter() - started_perf) * 1000)
-            self._repositories.add_message(
+            await self._repositories.complete_run(
+                run_id=run_id,
                 conversation_id=conversation_id,
-                role=MessageRole.ASSISTANT.value,
                 content=content,
-                run_id=run_id,
-            )
-            self._repositories.finish_run(
-                run_id=run_id,
-                status=RunStatus.COMPLETED,
                 usage=usage,
                 model_name=model_name,
                 duration_ms=duration_ms,
@@ -231,8 +220,8 @@ class AgentRuntime:
         registry: SourceRegistry,
     ) -> tuple[str, tuple[SourceReference, ...], UsageRecord, str | None, list[str]]:
         async with asyncio.timeout(self._run_timeout_seconds):
-            history = self._load_history(conversation_id)
-            documents, reuse_notes = self._prepare_reusable_documents(
+            history = await self._load_history(conversation_id)
+            documents, reuse_notes = await self._prepare_reusable_documents(
                 conversation_id, registry
             )
             bundle = self._context_builder.build(
@@ -308,7 +297,7 @@ class AgentRuntime:
                         ),
                         state=state,
                     )
-                    self._persist_tool_execution(
+                    await self._persist_tool_execution(
                         run_id=run_id,
                         conversation_id=conversation_id,
                         execution=execution,
@@ -368,15 +357,15 @@ class AgentRuntime:
         sources = registry.ordered(validation.used_source_ids)
         for reference in sources:
             if reference.reused:
-                self._repositories.link_run_source(
+                await self._repositories.link_run_source(
                     run_id=run_id,
                     snapshot_id=reference.snapshot_id,
                     source_id=reference.source_id,
                 )
         return validation.content, sources, usage, model_name, notes
 
-    def _load_history(self, conversation_id: str) -> list[ChatMessage]:
-        records = self._repositories.list_messages(conversation_id)
+    async def _load_history(self, conversation_id: str) -> list[ChatMessage]:
+        records = await self._repositories.list_messages(conversation_id)
         messages: list[ChatMessage] = []
         for record in records:
             role = record.role
@@ -388,10 +377,10 @@ class AgentRuntime:
             messages.pop()
         return messages
 
-    def _prepare_reusable_documents(
+    async def _prepare_reusable_documents(
         self, conversation_id: str, registry: SourceRegistry
     ) -> tuple[list[DocumentContext], list[str]]:
-        snapshots = self._repositories.list_snapshots(conversation_id)
+        snapshots = await self._repositories.list_snapshots(conversation_id)
         documents: list[DocumentContext] = []
         notes: list[str] = []
         seen_urls: set[str] = set()
@@ -426,7 +415,7 @@ class AgentRuntime:
             )
         return documents, notes
 
-    def _persist_tool_execution(
+    async def _persist_tool_execution(
         self,
         *,
         run_id: str,
@@ -436,7 +425,7 @@ class AgentRuntime:
         used_tool_call_ids: set[str],
     ) -> None:
         if execution.content is not None and execution.source_id is not None:
-            snapshot_id = self._repositories.add_snapshot(
+            snapshot_id = await self._repositories.add_snapshot(
                 conversation_id=conversation_id,
                 content=execution.content,
                 parse_status=DocumentParseStatus.OK,
@@ -449,13 +438,13 @@ class AgentRuntime:
                 fetched_at=execution.content.fetched_at,
                 truncated=execution.content.truncated,
             )
-            self._repositories.link_run_source(
+            await self._repositories.link_run_source(
                 run_id=run_id,
                 snapshot_id=snapshot_id,
                 source_id=reference.source_id,
             )
             registry.register(reference)
-        self._repositories.add_tool_call(
+        await self._repositories.add_tool_call(
             run_id=run_id,
             tool_call_id=_unique_tool_call_id(
                 execution.tool_call_id, used_tool_call_ids
@@ -483,7 +472,7 @@ class AgentRuntime:
             },
         )
 
-    def _finish_failure(
+    async def _finish_failure(
         self,
         *,
         run_id: str,
@@ -494,7 +483,7 @@ class AgentRuntime:
     ) -> RunOutcome:
         duration_ms = int((time.perf_counter() - started_perf) * 1000)
         try:
-            self._repositories.finish_run(
+            await self._repositories.finish_run(
                 run_id=run_id,
                 status=RunStatus.FAILED,
                 usage=usage,

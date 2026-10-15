@@ -11,6 +11,7 @@ from learning_agent.agent.tool_registry import ToolRegistry
 from learning_agent.config import Settings
 from learning_agent.domain.enums import RunStatus
 from learning_agent.models.provider_adapter import OpenAICompatibleModelClient
+from learning_agent.persistence.async_repositories import AsyncRepositories
 from learning_agent.persistence.database import (
     build_engine,
     build_session_factory,
@@ -63,7 +64,7 @@ def build_stack(settings: Settings, repositories: Repositories, server: LocalDoc
             max_history_messages=10,
             output_reserve_tokens=settings.model_max_output_tokens,
         ),
-        repositories=repositories,
+        repositories=AsyncRepositories(repositories),
         model_timeout_seconds=90.0,
         run_timeout_seconds=180.0,
         max_model_rounds=4,

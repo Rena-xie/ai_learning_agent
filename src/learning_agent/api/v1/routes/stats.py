@@ -7,17 +7,17 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 
 from learning_agent.api.v1.schemas import RunStatsResponse
-from learning_agent.persistence.repositories import Repositories
+from learning_agent.persistence.async_repositories import AsyncRepositories
 
 router = APIRouter(prefix="/api/v1/stats", tags=["stats"])
 
 
-def get_repositories(request: Request) -> Repositories:
-    return request.app.state.repositories
+def get_repositories(request: Request) -> AsyncRepositories:
+    return request.app.state.async_repositories
 
 
 @router.get("", response_model=RunStatsResponse)
 async def run_statistics(
-    repositories: Annotated[Repositories, Depends(get_repositories)],
+    repositories: Annotated[AsyncRepositories, Depends(get_repositories)],
 ) -> RunStatsResponse:
-    return RunStatsResponse(**repositories.run_statistics())
+    return RunStatsResponse(**await repositories.run_statistics())

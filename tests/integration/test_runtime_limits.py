@@ -24,6 +24,7 @@ from learning_agent.domain.contracts import ToolContext
 from learning_agent.domain.entities import DocumentContent, ToolOutcome
 from learning_agent.domain.enums import RunStatus
 from learning_agent.main import create_app
+from learning_agent.persistence.async_repositories import AsyncRepositories
 from learning_agent.persistence.database import build_engine, build_session_factory
 from learning_agent.persistence.migrations import apply_migrations
 from learning_agent.persistence.repositories import Repositories
@@ -87,7 +88,7 @@ def build_runtime(
         context_builder=ContextBuilder(
             max_tokens=8_000, max_history_messages=10, output_reserve_tokens=500
         ),
-        repositories=repositories,
+        repositories=AsyncRepositories(repositories),
         model_timeout_seconds=2.0,
         run_timeout_seconds=run_timeout_seconds,
         max_model_rounds=max_model_rounds,

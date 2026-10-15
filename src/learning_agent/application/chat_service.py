@@ -36,10 +36,10 @@ class ChatService:
                 ErrorCode.INVALID_REQUEST,
                 f"消息长度超过上限（{self._max_input_chars} 字符）",
             )
-        conversation = self._repositories.get_conversation(conversation_id)
+        conversation = await self._repositories.get_conversation(conversation_id)
         if conversation is None:
             raise AppError(ErrorCode.NOT_FOUND, "对话不存在或已被删除")
-        self._repositories.set_title_if_default(
+        await self._repositories.set_title_if_default(
             conversation_id, title=_derive_title(text)
         )
         logger.info(

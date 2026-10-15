@@ -13,16 +13,16 @@ from learning_agent.api.v1.schemas import (
     SourceResponse,
 )
 from learning_agent.domain.errors import AppError, ErrorCode
-from learning_agent.persistence.repositories import Repositories
+from learning_agent.persistence.async_repositories import AsyncRepositories
 
 router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
 
 
-def get_repositories(request: Request) -> Repositories:
-    return request.app.state.repositories
+def get_repositories(request: Request) -> AsyncRepositories:
+    return request.app.state.async_repositories
 
 
-RepositoriesDep = Annotated[Repositories, Depends(get_repositories)]
+RepositoriesDep = Annotated[AsyncRepositories, Depends(get_repositories)]
 
 
 @router.post("", response_model=ConversationResponse, status_code=201)
@@ -30,7 +30,7 @@ async def create_conversation(
     payload: ConversationCreateRequest, repositories: RepositoriesDep
 ) -> ConversationResponse:
     title = (payload.title or "").strip() or "新对话"
-    record = repositories.create_conversation(title=title)
+    record = await repositories.create_conversation(title=title)
     return ConversationResponse(
         id=record.id,
         title=record.title,
@@ -50,7 +50,7 @@ async def list_conversations(
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
-        for record in repositories.list_conversations()
+        for record in await repositories.list_conversations()
     ]
 
 
@@ -60,16 +60,16 @@ async def list_conversations(
 async def list_messages(
     conversation_id: str, repositories: RepositoriesDep
 ) -> list[MessageWithSourcesResponse]:
-    if repositories.get_conversation(conversation_id) is None:
+    if await repositories.get_conversation(conversation_id) is None:
         raise AppError(ErrorCode.NOT_FOUND, "对话不存在或已被删除")
-    messages = repositories.list_messages(conversation_id)
+    messages = await repositories.list_messages(conversation_id)
     responses: list[MessageWithSourcesResponse] = []
     source_cache: dict[str, list[SourceResponse]] = {}
     for message in messages:
         sources: list[SourceResponse] = []
         if message.role == "assistant" and message.run_id:
             if message.run_id not in source_cache:
-                run = repositories.get_run(message.run_id)
+                run = await repositories.get_run(message.run_id)
                 source_cache[message.run_id] = [
                     SourceResponse(
                         source_id=item.source_id,
@@ -100,12 +100,12 @@ async def delete_conversation(
 ) -> Response:
     """删除对话及其按规则关联的数据（消息、运行、来源关系、文档快照）。"""
 
-    if repositories.get_conversation(conversation_id) is None:
+    if await repositories.get_conversation(conversation_id) is None:
         raise AppError(ErrorCode.NOT_FOUND, "对话不存在或已被删除")
-    if repositories.get_active_run(conversation_id) is not None:
+    if await repositories.get_active_run(conversation_id) is not None:
         raise AppError(
             ErrorCode.RUN_IN_PROGRESS,
             "该对话有正在进行的运行，请等待运行结束后再删除",
         )
-    repositories.delete_conversation(conversation_id)
+    await repositories.delete_conversation(conversation_id)
     return Response(status_code=204)
