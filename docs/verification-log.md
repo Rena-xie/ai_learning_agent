@@ -99,6 +99,8 @@ uv run pytest                                                  # 含真实模型
 uv run python -m evals.run_eval --baseline evals/results/baseline-20261013.json
 ```
 
+逐条命令、预期结果与失败排查见 [smoke-checklist-v1.1.md](smoke-checklist-v1.1.md)。
+
 说明：本环境缺少 CPython 3.12 与第三方依赖，且无外网，因此以上命令未执行；
 异步提交、后台执行、真实问答与评估回归等端到端验证同样需要在本机完成。
 
