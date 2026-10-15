@@ -1,0 +1,13 @@
+# 统一文本文件按 LF 入库，避免跨平台（Windows/Linux）行尾差异造成噪声 diff。
+# 注意：该规则对既有文件在下次 `git add --renormalize .` 时才生效。
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.whl binary
+*.db binary
