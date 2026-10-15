@@ -88,6 +88,12 @@ class DocumentFetcher:
                         target, hop_url = self._follow(target, location)
                         redirects.append(hop_url)
                         continue
+                    if 300 <= response.status_code < 400:
+                        raise DocumentToolError(
+                            ErrorCode.FETCH_HTTP_ERROR,
+                            f"文档返回未处理的重定向状态（HTTP {response.status_code}）",
+                            detail=f"status={response.status_code}",
+                        )
                     return await self._read(response, target)
                 except httpx.TimeoutException as exc:
                     raise DocumentToolError(
