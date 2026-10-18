@@ -13,7 +13,7 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, ValidationError
 
 from learning_agent.domain.contracts import ToolContext
-from learning_agent.domain.entities import DocumentContent, ToolOutcome
+from learning_agent.domain.entities import DocumentContent, ToolOutcome, ToolSource
 from learning_agent.domain.enums import ToolCallStatus
 from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.observability.logging import redact_url
@@ -75,6 +75,7 @@ class ToolExecution:
     error_code: str | None = None
     source_id: str | None = None
     content: DocumentContent | None = None
+    sources: tuple[ToolSource, ...] = ()
 
 
 class ToolRegistry:
@@ -132,6 +133,7 @@ class ToolRegistry:
             error_code: str | None = None,
             source_id: str | None = None,
             content: DocumentContent | None = None,
+            sources: tuple[ToolSource, ...] = (),
         ) -> ToolExecution:
             finished_at = datetime.now(UTC)
             return ToolExecution(
@@ -147,6 +149,7 @@ class ToolRegistry:
                 error_code=error_code,
                 source_id=source_id,
                 content=content,
+                sources=sources,
             )
 
         state.consume()
@@ -285,6 +288,7 @@ class ToolRegistry:
             result_summary=summary,
             source_id=outcome.source_id,
             content=outcome.content,
+            sources=outcome.sources,
         )
 
 

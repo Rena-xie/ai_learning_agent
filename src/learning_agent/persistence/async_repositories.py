@@ -225,29 +225,44 @@ class AsyncRepositories:
         conversation_id: str,
         content: DocumentContent,
         parse_status: str,
+        provider: str = "fetch",
     ) -> int:
         return await self._call(
             self._inner.add_snapshot,
             conversation_id=conversation_id,
             content=content,
             parse_status=parse_status,
+            provider=provider,
         )
 
     async def find_snapshot_id(
-        self, *, conversation_id: str, canonical_url: str, content_hash: str
+        self,
+        *,
+        conversation_id: str,
+        canonical_url: str,
+        content_hash: str,
+        provider: str = "fetch",
     ) -> int | None:
         return await self._call(
             self._inner.find_snapshot_id,
             conversation_id=conversation_id,
             canonical_url=canonical_url,
             content_hash=content_hash,
+            provider=provider,
         )
 
     async def list_snapshots(
-        self, conversation_id: str, *, limit: int = 20
+        self,
+        conversation_id: str,
+        *,
+        limit: int = 20,
+        provider: str | None = None,
     ) -> list[SnapshotRecord]:
         return await self._call(
-            self._inner.list_snapshots, conversation_id, limit=limit
+            self._inner.list_snapshots,
+            conversation_id,
+            limit=limit,
+            provider=provider,
         )
 
     async def link_run_source(

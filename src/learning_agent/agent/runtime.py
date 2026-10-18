@@ -423,7 +423,9 @@ class AgentRuntime:
     async def _prepare_reusable_documents(
         self, conversation_id: str, registry: SourceRegistry
     ) -> tuple[list[DocumentContext], list[str]]:
-        snapshots = await self._repositories.list_snapshots(conversation_id)
+        snapshots = await self._repositories.list_snapshots(
+            conversation_id, provider="fetch"
+        )
         documents: list[DocumentContext] = []
         notes: list[str] = []
         seen_urls: set[str] = set()
@@ -444,6 +446,7 @@ class AgentRuntime:
                     fetched_at=snapshot.fetched_at,
                     truncated=snapshot.truncated,
                     reused=True,
+                    provider="fetch",
                 )
             )
             documents.append(
@@ -459,7 +462,11 @@ class AgentRuntime:
         return documents, notes
 
     async def _resolve_snapshot_id(
-        self, *, conversation_id: str, document: DocumentContent
+        self,
+        *,
+        conversation_id: str,
+        document: DocumentContent,
+        provider: str = "fetch",
     ) -> int:
         """复用同 URL 同内容哈希的既有快照，否则新建，避免重复累积。"""
 
@@ -467,6 +474,7 @@ class AgentRuntime:
             conversation_id=conversation_id,
             canonical_url=document.canonical_url,
             content_hash=document.content_hash,
+            provider=provider,
         )
         if existing_id is not None:
             return existing_id
@@ -474,6 +482,7 @@ class AgentRuntime:
             conversation_id=conversation_id,
             content=document,
             parse_status=DocumentParseStatus.OK,
+            provider=provider,
         )
 
     async def _persist_tool_execution(
@@ -485,6 +494,28 @@ class AgentRuntime:
         registry: SourceRegistry,
         used_tool_call_ids: set[str],
     ) -> None:
+        for source in execution.sources:
+            document = source.content
+            snapshot_id = await self._resolve_snapshot_id(
+                conversation_id=conversation_id,
+                document=document,
+                provider=source.provider,
+            )
+            reference = SourceReference(
+                source_id=source.source_id,
+                snapshot_id=snapshot_id,
+                canonical_url=document.canonical_url,
+                title=document.title,
+                fetched_at=document.fetched_at,
+                truncated=document.truncated,
+                provider=source.provider,
+            )
+            await self._repositories.link_run_source(
+                run_id=run_id,
+                snapshot_id=snapshot_id,
+                source_id=reference.source_id,
+            )
+            registry.register(reference)
         if execution.content is not None and execution.source_id is not None:
             document = execution.content
             snapshot_id = await self._resolve_snapshot_id(
@@ -497,6 +528,7 @@ class AgentRuntime:
                 title=document.title,
                 fetched_at=document.fetched_at,
                 truncated=document.truncated,
+                provider="fetch",
             )
             await self._repositories.link_run_source(
                 run_id=run_id,

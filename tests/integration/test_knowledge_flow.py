@@ -68,6 +68,31 @@ class FakeKnowledgeClient:
         self.calls.append(("sources", limit))
         return {"items": [], "total": 0, "page": 1, "size": limit}
 
+    async def search(self, question: str, *, top_k: int = 5) -> dict[str, object]:
+        self.calls.append(("search", question))
+        return {
+            "question": question,
+            "max_similarity": 0.9,
+            "evidences": [
+                {
+                    "source_id": 10,
+                    "child_id": 20,
+                    "parent_id": 30,
+                    "title": "BM25 指南",
+                    "url": "https://example.com/bm25",
+                    "heading_path": "检索 / BM25",
+                    "score": 0.9,
+                    "text": (
+                        "BM25 是一种稀疏检索算法，通过词频和文档长度归一化计算相关性。"
+                    ),
+                }
+            ],
+            "elapsed_ms": 5.0,
+            "dense_ids": [20],
+            "bm25_ids": [20],
+            "fused_ids": [20],
+        }
+
     async def aclose(self) -> None:
         self.closed = True
 
@@ -80,6 +105,8 @@ async def test_agent_starts_ingestion_without_claiming_completion(
         [
             tool_call_response(("ingest_urls", '{"urls": ["https://example.com/a"]}')),
             final_response("已开始入库，任务编号 job_test_1。完成后会自动通知。"),
+            tool_call_response(("search_knowledge", '{"question": "BM25 是什么？"}')),
+            final_response("BM25 是一种稀疏检索算法 [S1]。"),
         ]
     )
     app = create_app(
@@ -110,7 +137,7 @@ async def test_agent_starts_ingestion_without_claiming_completion(
             assert "已完成" not in payload["message"]["content"]
 
             run = (await client.get(f"/api/v1/runs/{payload['run_id']}")).json()
-            assert run["prompt_version"] == "v2"
+            assert run["prompt_version"] == "v3"
             assert run["tool_calls"][0]["tool_name"] == "ingest_urls"
             assert run["tool_calls"][0]["status"] == "succeeded"
 
@@ -139,6 +166,23 @@ async def test_agent_starts_ingestion_without_claiming_completion(
             assert len(notices) == 1
             assert "已完成入库" in notices[0]["content"]
             assert notices[0]["run_id"] is None
+
+            answer = await client.post(
+                f"/api/v1/conversations/{conversation_id}/messages",
+                json={"content": "根据知识库说说 BM25 是什么"},
+            )
+            assert answer.status_code == 201, answer.text
+            answer_payload = answer.json()
+            assert "[S1]" in answer_payload["message"]["content"]
+            assert answer_payload["sources"][0]["source_id"] == "S1"
+            assert answer_payload["sources"][0]["provider"] == "knowledge_base"
+            assert answer_payload["sources"][0]["url"] == "https://example.com/bm25"
+
+            answer_run = (
+                await client.get(f"/api/v1/runs/{answer_payload['run_id']}")
+            ).json()
+            assert answer_run["prompt_version"] == "v3"
+            assert answer_run["tool_calls"][0]["tool_name"] == "search_knowledge"
 
     assert ("create", ["https://example.com/a"]) in knowledge.calls
     assert knowledge.closed is True
@@ -169,4 +213,5 @@ async def test_knowledge_tools_are_registered_when_enabled(
             "ingest_urls",
             "get_ingestion",
             "list_sources",
+            "search_knowledge",
         } <= app.state.tool_registry.names

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
 from learning_agent.domain.contracts import ToolContext
-from learning_agent.domain.entities import ToolOutcome
+from learning_agent.domain.entities import DocumentContent, ToolOutcome, ToolSource
 from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.tools.knowledge.client import KnowledgeBasePort
 
@@ -53,6 +54,22 @@ class ListSourcesArgs(BaseModel):
         ge=1,
         le=20,
         description="最多返回多少条最近来源",
+    )
+
+
+class SearchKnowledgeArgs(BaseModel):
+    """知识库检索参数。"""
+
+    question: str = Field(
+        min_length=1,
+        max_length=1_000,
+        description="要在已入库知识中检索的问题",
+    )
+    top_k: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="最多返回多少条证据",
     )
 
 
@@ -298,6 +315,117 @@ class ListSourcesTool:
         )
 
 
+class SearchKnowledgeTool:
+    """检索知识库证据；由 Agent 基于证据作答并生成 S1 引用。"""
+
+    name = "search_knowledge"
+    description = (
+        "在用户已入库的知识库中检索证据。"
+        "用户询问之前保存/收藏的内容，或要求基于知识库回答时使用。"
+        "返回带 source_id 的证据片段；只可引用这些编号。"
+    )
+    args_model = SearchKnowledgeArgs
+    parameters_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {
+            "question": {
+                "type": "string",
+                "description": "要在已入库知识中检索的问题",
+            },
+            "top_k": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10,
+                "default": 5,
+                "description": "最多返回多少条证据",
+            },
+        },
+        "required": ["question"],
+        "additionalProperties": False,
+    }
+
+    def __init__(self, client: KnowledgeBasePort, *, min_similarity: float) -> None:
+        self._client = client
+        self._min_similarity = min_similarity
+
+    async def __call__(
+        self, args: SearchKnowledgeArgs, context: ToolContext
+    ) -> ToolOutcome:
+        try:
+            payload = await self._client.search(args.question)
+        except AppError as exc:
+            return _error_outcome(exc.code, exc.message, status="error")
+
+        max_similarity = _as_float(payload.get("max_similarity"))
+        evidences = _as_list(payload.get("evidences"))
+        if not evidences or max_similarity < self._min_similarity:
+            return _insufficient_outcome(max_similarity, "知识库缺少相关证据")
+
+        sources: list[ToolSource] = []
+        model_evidences: list[dict[str, object]] = []
+        for evidence in evidences[: args.top_k]:
+            text = _as_text(evidence.get("text"))
+            url = _as_text(evidence.get("url"))
+            if not text or not url:
+                continue
+            source_id = context.allocator.next_source_id()
+            title = _as_text(evidence.get("title")) or "知识库来源"
+            document = DocumentContent(
+                title=title,
+                canonical_url=url,
+                fetched_at=datetime.now(UTC),
+                content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                content_text=text,
+                sections=(),
+                truncated=True,
+                warnings=("知识库证据片段",),
+            )
+            sources.append(
+                ToolSource(
+                    source_id=source_id,
+                    content=document,
+                    provider="knowledge_base",
+                )
+            )
+            model_evidences.append(
+                {
+                    "source_id": source_id,
+                    "title": title,
+                    "heading_path": _as_text(evidence.get("heading_path")),
+                    "score": _as_float(evidence.get("score")),
+                    "snippet": _truncate_text(text, 400),
+                }
+            )
+
+        if not sources:
+            return _insufficient_outcome(max_similarity, "知识库缺少可用证据")
+
+        logger.info(
+            "knowledge_evidence_found",
+            extra={
+                "extra_fields": {
+                    "evidences": len(sources),
+                    "max_similarity": max_similarity,
+                }
+            },
+        )
+        return ToolOutcome(
+            ok=True,
+            model_payload={
+                "status": "ok",
+                "insufficient": False,
+                "max_similarity": max_similarity,
+                "evidences": model_evidences,
+            },
+            result_summary={
+                "status": "ok",
+                "evidences": len(sources),
+                "max_similarity": max_similarity,
+            },
+            sources=tuple(sources),
+        )
+
+
 def _normalize_urls(urls: list[str], *, max_urls: int) -> tuple[list[str], str | None]:
     cleaned: list[str] = []
     for raw in urls:
@@ -373,6 +501,32 @@ def _as_text(value: Any) -> str:
 
 def _as_int(value: Any) -> int:
     return value if isinstance(value, int) else 0
+
+
+def _as_float(value: Any) -> float:
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def _insufficient_outcome(max_similarity: float, message: str) -> ToolOutcome:
+    return ToolOutcome(
+        ok=True,
+        model_payload={
+            "status": "ok",
+            "insufficient": True,
+            "max_similarity": max_similarity,
+            "message": message,
+        },
+        result_summary={
+            "status": "ok",
+            "insufficient": True,
+            "max_similarity": max_similarity,
+        },
+    )
+
+
+def _truncate_text(text: str, limit: int) -> str:
+    normalized = " ".join(text.split())
+    return normalized if len(normalized) <= limit else normalized[: limit - 1] + "…"
 
 
 def _as_list(value: Any) -> list[dict[str, Any]]:

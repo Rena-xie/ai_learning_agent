@@ -219,6 +219,9 @@ class DocumentSnapshot(Base):
     sections_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     truncated: Mapped[bool] = mapped_column(Boolean, default=False)
     parse_status: Mapped[str] = mapped_column(String(16), default="ok")
+    provider: Mapped[str] = mapped_column(
+        String(32), default="fetch", server_default=text("'fetch'")
+    )
     warnings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="snapshots")

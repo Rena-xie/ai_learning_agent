@@ -56,6 +56,7 @@ async def get_run(
                 url=item.canonical_url,
                 fetched_at=item.fetched_at,
                 truncated=item.truncated,
+                provider=item.provider,
             )
             for item in run.sources
         ],

@@ -13,6 +13,8 @@ from learning_agent.tools.knowledge.tool import (
     IngestUrlsTool,
     ListSourcesArgs,
     ListSourcesTool,
+    SearchKnowledgeArgs,
+    SearchKnowledgeTool,
 )
 
 
@@ -21,9 +23,26 @@ class NoopAllocator:
         return "S1"
 
 
+class CountingAllocator:
+    def __init__(self) -> None:
+        self.count = 0
+
+    def next_source_id(self) -> str:
+        self.count += 1
+        return f"S{self.count}"
+
+
 def make_context() -> ToolContext:
     return ToolContext(
         run_id="run-1", conversation_id="conv-1", allocator=NoopAllocator()
+    )
+
+
+def make_counting_context() -> ToolContext:
+    return ToolContext(
+        run_id="run-1",
+        conversation_id="conv-1",
+        allocator=CountingAllocator(),
     )
 
 
@@ -34,11 +53,13 @@ class FakeKnowledgeClient:
         create_response: dict[str, Any] | None = None,
         get_response: dict[str, Any] | None = None,
         sources_response: dict[str, Any] | None = None,
+        search_response: dict[str, Any] | None = None,
         error: AppError | None = None,
     ) -> None:
         self.create_response = create_response or {}
         self.get_response = get_response or {}
         self.sources_response = sources_response or {}
+        self.search_response = search_response or {}
         self.error = error
         self.calls: list[tuple[str, object]] = []
 
@@ -65,6 +86,12 @@ class FakeKnowledgeClient:
         if self.error is not None:
             raise self.error
         return self.sources_response
+
+    async def search(self, question: str, *, top_k: int = 5) -> dict[str, object]:
+        self.calls.append(("search", question))
+        if self.error is not None:
+            raise self.error
+        return self.search_response
 
     async def aclose(self) -> None:
         return None
@@ -156,6 +183,73 @@ async def test_ingest_urls_survives_watch_registration_failure() -> None:
 
     assert outcome.ok is True
     assert "未能注册自动通知" in outcome.model_payload["note"]
+
+
+async def test_search_knowledge_allocates_one_source_per_evidence() -> None:
+    client = FakeKnowledgeClient(
+        search_response={
+            "max_similarity": 0.9,
+            "evidences": [
+                {
+                    "title": "BM25 指南",
+                    "url": "https://example.com/bm25",
+                    "heading_path": "检索 / BM25",
+                    "score": 0.91,
+                    "text": "BM25 是一种稀疏检索算法。",
+                },
+                {
+                    "title": "RRF 指南",
+                    "url": "https://example.com/rrf",
+                    "heading_path": "检索 / RRF",
+                    "score": 0.87,
+                    "text": "RRF 使用排名而不是原始分数融合结果。",
+                },
+            ],
+        }
+    )
+    tool = SearchKnowledgeTool(client, min_similarity=0.58)
+
+    outcome = await tool(
+        SearchKnowledgeArgs(question="BM25 是什么？"), make_counting_context()
+    )
+
+    assert outcome.ok is True
+    assert outcome.model_payload["insufficient"] is False
+    evidence_ids = [
+        evidence["source_id"] for evidence in outcome.model_payload["evidences"]
+    ]
+    assert evidence_ids == ["S1", "S2"]
+    assert len(outcome.sources) == 2
+    assert outcome.sources[0].provider == "knowledge_base"
+    assert outcome.sources[0].content.canonical_url == "https://example.com/bm25"
+    assert outcome.sources[0].content.truncated is True
+
+
+async def test_search_knowledge_marks_insufficient() -> None:
+    client = FakeKnowledgeClient(
+        search_response={"max_similarity": 0.4, "evidences": []}
+    )
+    tool = SearchKnowledgeTool(client, min_similarity=0.58)
+
+    outcome = await tool(
+        SearchKnowledgeArgs(question="无关问题"), make_counting_context()
+    )
+
+    assert outcome.ok is True
+    assert outcome.model_payload["insufficient"] is True
+    assert outcome.sources == ()
+
+
+async def test_search_knowledge_maps_service_error() -> None:
+    client = FakeKnowledgeClient(
+        error=AppError(ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE, "无法连接知识库服务")
+    )
+    tool = SearchKnowledgeTool(client, min_similarity=0.58)
+
+    outcome = await tool(SearchKnowledgeArgs(question="BM25"), make_counting_context())
+
+    assert outcome.ok is False
+    assert outcome.error_code == ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE.value
 
 
 async def test_ingest_urls_rejects_non_http_without_calling_rag() -> None:

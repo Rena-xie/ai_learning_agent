@@ -37,6 +37,7 @@ from learning_agent.tools.knowledge.tool import (
     GetIngestionTool,
     IngestUrlsTool,
     ListSourcesTool,
+    SearchKnowledgeTool,
 )
 
 logger = get_logger(__name__)
@@ -119,6 +120,10 @@ def create_app(
                 ),
                 GetIngestionTool(active_knowledge_client),
                 ListSourcesTool(active_knowledge_client),
+                SearchKnowledgeTool(
+                    active_knowledge_client,
+                    min_similarity=resolved.knowledge_base_min_similarity,
+                ),
             ]
         )
     tool_registry = ToolRegistry(tools)

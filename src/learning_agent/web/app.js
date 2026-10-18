@@ -206,7 +206,10 @@ function renderSources(sources) {
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     const truncated = source.truncated ? "，内容已截断" : "";
-    link.textContent = `[${source.source_id}] ${source.title}（获取于 ${formatTime(
+    const fromKnowledge = source.provider === "knowledge_base";
+    const origin = fromKnowledge ? "知识库" : "网页";
+    const when = fromKnowledge ? "召回于" : "获取于";
+    link.textContent = `[${source.source_id}] ${source.title}（${origin}，${when} ${formatTime(
       source.fetched_at,
     )}${truncated}）`;
     wrapper.append(link);

@@ -79,6 +79,7 @@ class SnapshotRecord:
     sections: tuple[Section, ...]
     truncated: bool
     parse_status: str
+    provider: str
     warnings: tuple[str, ...]
 
 
@@ -103,6 +104,7 @@ class RunSourceView:
     title: str
     fetched_at: datetime
     truncated: bool
+    provider: str
 
 
 @dataclass(frozen=True)
@@ -534,6 +536,7 @@ class Repositories:
                         title=snapshot.title,
                         fetched_at=snapshot.fetched_at,
                         truncated=snapshot.truncated,
+                        provider=snapshot.provider,
                     )
                     for source, snapshot in sources
                 ],
@@ -615,6 +618,7 @@ class Repositories:
         conversation_id: str,
         content: DocumentContent,
         parse_status: str,
+        provider: str = "fetch",
     ) -> int:
         sections = [
             {
@@ -635,6 +639,7 @@ class Repositories:
                 sections_json=json.dumps(sections, ensure_ascii=False),
                 truncated=content.truncated,
                 parse_status=parse_status,
+                provider=provider,
                 warnings_json=json.dumps(list(content.warnings), ensure_ascii=False),
             )
             session.add(snapshot)
@@ -642,7 +647,12 @@ class Repositories:
             return snapshot.id
 
     def find_snapshot_id(
-        self, *, conversation_id: str, canonical_url: str, content_hash: str
+        self,
+        *,
+        conversation_id: str,
+        canonical_url: str,
+        content_hash: str,
+        provider: str = "fetch",
     ) -> int | None:
         """按 (对话, 规范化 URL, 内容哈希) 查找已有快照 ID，用于去重。"""
 
@@ -653,6 +663,7 @@ class Repositories:
                     DocumentSnapshot.conversation_id == conversation_id,
                     DocumentSnapshot.canonical_url == canonical_url,
                     DocumentSnapshot.content_hash == content_hash,
+                    DocumentSnapshot.provider == provider,
                 )
                 .order_by(DocumentSnapshot.id.desc())
                 .limit(1)
@@ -660,12 +671,19 @@ class Repositories:
             return int(row) if row is not None else None
 
     def list_snapshots(
-        self, conversation_id: str, *, limit: int = 20
+        self,
+        conversation_id: str,
+        *,
+        limit: int = 20,
+        provider: str | None = None,
     ) -> list[SnapshotRecord]:
         with self._session() as session:
+            condition = [DocumentSnapshot.conversation_id == conversation_id]
+            if provider is not None:
+                condition.append(DocumentSnapshot.provider == provider)
             rows = session.scalars(
                 select(DocumentSnapshot)
-                .where(DocumentSnapshot.conversation_id == conversation_id)
+                .where(*condition)
                 .order_by(
                     DocumentSnapshot.fetched_at.desc(), DocumentSnapshot.id.desc()
                 )
@@ -710,6 +728,7 @@ class Repositories:
                     title=snapshot.title,
                     fetched_at=snapshot.fetched_at,
                     truncated=snapshot.truncated,
+                    provider=snapshot.provider,
                 )
             )
         return {run_id: tuple(items) for run_id, items in grouped.items()}
@@ -926,6 +945,7 @@ def _to_snapshot(row: DocumentSnapshot) -> SnapshotRecord:
         sections=tuple(sections),
         truncated=row.truncated,
         parse_status=row.parse_status,
+        provider=row.provider,
         warnings=warnings,
     )
 

@@ -80,7 +80,7 @@ def apply_migrations(database_url: str) -> None:
 
 
 def _legacy_stamp_revision(database_url: str) -> str:
-    """判断无版本记录的旧库是否需要补跑 0002。"""
+    """判断无版本记录的旧库需要从哪个修订开始补跑。"""
 
     engine = create_engine(database_url)
     try:
@@ -90,8 +90,16 @@ def _legacy_stamp_revision(database_url: str) -> str:
             columns = {
                 column["name"] for column in inspect(engine).get_columns("messages")
             }
+        snapshot_columns: set[str] = set()
+        if "document_snapshots" in tables:
+            snapshot_columns = {
+                column["name"]
+                for column in inspect(engine).get_columns("document_snapshots")
+            }
     finally:
         engine.dispose()
     if "ingestion_watches" in tables and "kind" in columns:
+        if "provider" not in snapshot_columns:
+            return "0002_ingestion_watch"
         return "head"
     return "0001_initial_schema"

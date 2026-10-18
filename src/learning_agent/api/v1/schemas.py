@@ -24,6 +24,7 @@ class SourceResponse(BaseModel):
     url: str
     fetched_at: datetime
     truncated: bool = False
+    provider: str = "fetch"
 
 
 class MessageResponse(BaseModel):

@@ -32,6 +32,8 @@ class KnowledgeBasePort(Protocol):
 
     async def get_ingestion(self, job_id: str) -> dict[str, object]: ...
 
+    async def search(self, question: str, *, top_k: int = 5) -> dict[str, object]: ...
+
     async def list_sources(self, limit: int = 10) -> dict[str, object]: ...
 
     async def aclose(self) -> None: ...
@@ -75,6 +77,13 @@ class KnowledgeBaseClient:
     async def get_ingestion(self, job_id: str) -> dict[str, object]:
         return await self._request(
             "GET", f"/api/v1/ingestions/{quote(job_id, safe='')}"
+        )
+
+    async def search(self, question: str, *, top_k: int = 5) -> dict[str, object]:
+        return await self._request(
+            "POST",
+            "/api/v1/search",
+            json={"question": question},
         )
 
     async def list_sources(self, limit: int = 10) -> dict[str, object]:

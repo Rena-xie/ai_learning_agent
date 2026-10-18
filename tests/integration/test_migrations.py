@@ -41,10 +41,15 @@ def test_fresh_database_is_migrated_and_usable(tmp_path) -> None:
         message_columns = {
             column["name"] for column in inspect(engine).get_columns("messages")
         }
+        snapshot_columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("document_snapshots")
+        }
     finally:
         engine.dispose()
     assert tables >= EXPECTED_TABLES
     assert "kind" in message_columns
+    assert "provider" in snapshot_columns
 
     repositories = make_repositories(url)
     conversation = repositories.create_conversation(title="迁移后可用")
@@ -111,8 +116,8 @@ def test_legacy_database_is_stamped_without_data_loss(tmp_path) -> None:
     assert [message.content for message in messages] == ["升级前写入的消息"]
 
 
-def test_v1_legacy_database_gets_notification_schema(tmp_path) -> None:
-    """真实 v1 旧库（无 kind / watches）应补跑 0002，而不是直接 stamp head。"""
+def test_v1_legacy_database_gets_new_schema(tmp_path) -> None:
+    """真实 v1 旧库应补跑 0002/0003，而不是直接 stamp head。"""
 
     url = f"sqlite:///{(tmp_path / 'legacy-v1.db').as_posix()}"
     engine = build_engine(url)
@@ -125,6 +130,27 @@ def test_v1_legacy_database_gets_notification_schema(tmp_path) -> None:
                     title VARCHAR(120) NOT NULL,
                     created_at DATETIME NOT NULL,
                     updated_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE document_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id VARCHAR(36) NOT NULL,
+                    canonical_url VARCHAR(2048) NOT NULL,
+                    title VARCHAR(300) NOT NULL,
+                    fetched_at DATETIME NOT NULL,
+                    content_hash VARCHAR(64) NOT NULL,
+                    extracted_text TEXT NOT NULL,
+                    sections_json TEXT,
+                    truncated BOOLEAN NOT NULL,
+                    parse_status VARCHAR(16) NOT NULL,
+                    warnings_json TEXT,
+                    FOREIGN KEY(conversation_id)
+                        REFERENCES conversations(id) ON DELETE CASCADE
                 )
                 """
             )
@@ -175,10 +201,15 @@ def test_v1_legacy_database_gets_notification_schema(tmp_path) -> None:
     try:
         tables = set(inspect(engine).get_table_names())
         columns = {column["name"] for column in inspect(engine).get_columns("messages")}
+        snapshot_columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("document_snapshots")
+        }
     finally:
         engine.dispose()
     assert "ingestion_watches" in tables
     assert "kind" in columns
+    assert "provider" in snapshot_columns
 
     repositories = make_repositories(url)
     messages = repositories.list_messages("conv-1")

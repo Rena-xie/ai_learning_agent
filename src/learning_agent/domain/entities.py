@@ -34,6 +34,15 @@ class DocumentContent:
 
 
 @dataclass(frozen=True)
+class ToolSource:
+    """一次工具调用中可登记为引用的来源（v2：支持多来源）。"""
+
+    source_id: str
+    content: DocumentContent
+    provider: str = "fetch"
+
+
+@dataclass(frozen=True)
 class SourceReference:
     """一次运行中可被引用的来源记录（由服务端生成，模型不可伪造）。"""
 
@@ -44,6 +53,7 @@ class SourceReference:
     fetched_at: datetime
     truncated: bool = False
     reused: bool = False
+    provider: str = "fetch"
 
 
 @dataclass(frozen=True)
@@ -56,6 +66,7 @@ class ToolOutcome:
     error_code: str | None = None
     source_id: str | None = None
     content: DocumentContent | None = None
+    sources: tuple[ToolSource, ...] = ()
 
 
 @dataclass(frozen=True)
