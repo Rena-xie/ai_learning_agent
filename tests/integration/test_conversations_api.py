@@ -131,9 +131,9 @@ async def test_list_messages_includes_run_sources(tmp_path) -> None:
     app = create_app(make_settings(tmp_path))
     repositories = app.state.repositories
     async with running_client(app) as client:
-        conversation_id = (
-            await client.post("/api/v1/conversations", json={})
-        ).json()["id"]
+        conversation_id = (await client.post("/api/v1/conversations", json={})).json()[
+            "id"
+        ]
         run_id = "33333333-0000-0000-0000-000000000001"
         repositories.create_run(
             run_id=run_id,

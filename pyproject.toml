@@ -1,6 +1,6 @@
 [project]
 name = "ai-learning-agent"
-version = "0.1.0"
+version = "1.0.0"
 description = "本地可运行的 AI 学习助手：基于官方技术文档讲解核心概念并给出可追溯来源"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -34,6 +34,7 @@ packages = ["src/learning_agent"]
 line-length = 88
 target-version = "py312"
 src = ["src", "tests"]
+exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "C4", "RET", "ASYNC"]

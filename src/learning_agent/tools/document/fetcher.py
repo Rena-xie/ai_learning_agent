@@ -91,7 +91,8 @@ class DocumentFetcher:
                     if 300 <= response.status_code < 400:
                         raise DocumentToolError(
                             ErrorCode.FETCH_HTTP_ERROR,
-                            f"文档返回未处理的重定向状态（HTTP {response.status_code}）",
+                            "文档返回未处理的重定向状态"
+                            f"（HTTP {response.status_code}）",
                             detail=f"status={response.status_code}",
                         )
                     return await self._read(response, target)

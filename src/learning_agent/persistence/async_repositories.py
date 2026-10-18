@@ -57,9 +57,7 @@ class AsyncRepositories:
         return await self._call(self._inner.get_conversation, conversation_id)
 
     async def set_title_if_default(self, conversation_id: str, *, title: str) -> None:
-        await self._call(
-            self._inner.set_title_if_default, conversation_id, title=title
-        )
+        await self._call(self._inner.set_title_if_default, conversation_id, title=title)
 
     async def delete_conversation(self, conversation_id: str) -> bool:
         return await self._call(self._inner.delete_conversation, conversation_id)
@@ -135,9 +133,7 @@ class AsyncRepositories:
     async def list_messages(
         self, conversation_id: str, *, limit: int | None = None
     ) -> list[MessageRecord]:
-        return await self._call(
-            self._inner.list_messages, conversation_id, limit=limit
-        )
+        return await self._call(self._inner.list_messages, conversation_id, limit=limit)
 
     async def get_message_by_run(
         self,

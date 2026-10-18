@@ -45,9 +45,9 @@ async def test_async_submission_returns_202_then_reports_failure(tmp_path) -> No
         )
     )
     async with running_client(app) as client:
-        conversation_id = (
-            await client.post("/api/v1/conversations", json={})
-        ).json()["id"]
+        conversation_id = (await client.post("/api/v1/conversations", json={})).json()[
+            "id"
+        ]
         response = await client.post(
             f"/api/v1/conversations/{conversation_id}/messages?mode=async",
             json={"content": "请解释什么是依赖注入"},
@@ -77,9 +77,9 @@ async def test_async_submission_rejected_when_run_active(tmp_path) -> None:
     )
     repositories = app.state.repositories
     async with running_client(app) as client:
-        conversation_id = (
-            await client.post("/api/v1/conversations", json={})
-        ).json()["id"]
+        conversation_id = (await client.post("/api/v1/conversations", json={})).json()[
+            "id"
+        ]
         repositories.create_run(
             run_id="44444444-4444-4444-4444-444444444444",
             conversation_id=conversation_id,
@@ -101,23 +101,19 @@ async def test_async_run_completes_with_real_model(tmp_path) -> None:
     """真实模型链路：异步提交后轮询到 completed，消息与来源齐备。"""
 
     settings = Settings().model_copy(
-        update={
-            "database_url": f"sqlite:///{(tmp_path / 'async-real.db').as_posix()}"
-        }
+        update={"database_url": f"sqlite:///{(tmp_path / 'async-real.db').as_posix()}"}
     )
     app = create_app(settings)
     async with running_client(app, timeout_seconds=300) as client:
-        conversation_id = (
-            await client.post("/api/v1/conversations", json={})
-        ).json()["id"]
+        conversation_id = (await client.post("/api/v1/conversations", json={})).json()[
+            "id"
+        ]
         response = await client.post(
             f"/api/v1/conversations/{conversation_id}/messages?mode=async",
             json={"content": f"请阅读 {DOC_URL} ，说明这份文档的主题。"},
         )
         assert response.status_code == 202, response.text
-        run = await wait_for_run(
-            client, response.json()["run_id"], timeout_seconds=280
-        )
+        run = await wait_for_run(client, response.json()["run_id"], timeout_seconds=280)
         history = (
             await client.get(f"/api/v1/conversations/{conversation_id}/messages")
         ).json()

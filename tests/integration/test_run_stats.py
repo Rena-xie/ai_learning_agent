@@ -118,9 +118,7 @@ async def test_stats_include_estimated_cost(tmp_path) -> None:
     repositories.finish_run(
         run_id=run_id,
         status=RunStatus.COMPLETED,
-        usage=UsageRecord(
-            input_tokens=1000, output_tokens=500, estimated_cost=0.002
-        ),
+        usage=UsageRecord(input_tokens=1000, output_tokens=500, estimated_cost=0.002),
         duration_ms=100,
     )
 

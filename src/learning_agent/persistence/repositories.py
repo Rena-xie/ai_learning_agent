@@ -580,9 +580,7 @@ class Repositories:
         """基础运行统计：用 SQL 聚合，避免把全部运行与工具调用载入内存。"""
 
         with self._session() as session:
-            runs_total = (
-                session.scalar(select(func.count()).select_from(AgentRun)) or 0
-            )
+            runs_total = session.scalar(select(func.count()).select_from(AgentRun)) or 0
             runs_completed = (
                 session.scalar(
                     select(func.count())

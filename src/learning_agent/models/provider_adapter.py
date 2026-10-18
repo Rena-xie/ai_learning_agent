@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Sequence
 from typing import Any
@@ -159,10 +160,8 @@ def _status_error_text(exc: openai.APIStatusError) -> str:
         parts.append(str(body))
     response = getattr(exc, "response", None)
     if response is not None:
-        try:
+        with contextlib.suppress(Exception):
             parts.append(response.text)
-        except Exception:  # noqa: BLE001 - 读取响应正文失败不影响错误分类
-            pass
     return " ".join(parts).lower()
 
 

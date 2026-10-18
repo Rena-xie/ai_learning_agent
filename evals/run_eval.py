@@ -78,11 +78,14 @@ async def run_case(case: dict[str, Any], workdir: Path) -> dict[str, Any]:
         )
         url = server.url(document["path"]) if server else document["url"]
         result: dict[str, Any] = {"case_id": case["id"], "document_url": url}
-        async with app.router.lifespan_context(app), httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://testserver",
-            timeout=TIMEOUT,
-        ) as client:
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://testserver",
+                timeout=TIMEOUT,
+            ) as client,
+        ):
             conversation_id = (
                 await client.post("/api/v1/conversations", json={})
             ).json()["id"]
