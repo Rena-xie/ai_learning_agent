@@ -22,7 +22,6 @@ _CJK_RANGES = (
 )
 _CJK_TOKEN_RATIO = 0.9
 _OTHER_TOKEN_RATIO = 0.3
-_TOKENS_TO_CHARS = 1.6
 _DOCUMENT_OVERHEAD_TOKENS = 60
 
 
@@ -126,7 +125,10 @@ class ContextBuilder:
         included_documents: list[DocumentContext] = []
         for document in documents:
             text, truncated = _fit_document(
-                document.text, self._max_document_chars, budget
+                document.text,
+                self._max_document_chars,
+                budget,
+                safety_factor=self._token_safety_factor,
             )
             cost = self._estimate(text) + _DOCUMENT_OVERHEAD_TOKENS
             if cost > budget:
@@ -166,9 +168,39 @@ class ContextBuilder:
         )
 
 
-def _fit_document(text: str, max_chars: int, budget_tokens: int) -> tuple[str, bool]:
+def _fit_document(
+    text: str,
+    max_chars: int,
+    budget_tokens: int,
+    *,
+    safety_factor: float = 1.0,
+) -> tuple[str, bool]:
+    """按预算截断文档。
+
+    字符上限由文本自身的字符构成与安全系数反推，保证截断后的估算 token 数
+    不超过预算（此前使用固定 1.6 字符/token，中文比例提高到 0.9 后会把
+    本可截断容纳的文档整体丢弃）。
+    """
+
     usable = max(0, budget_tokens - _DOCUMENT_OVERHEAD_TOKENS)
-    char_cap = min(max_chars, max(200, int(usable * _TOKENS_TO_CHARS)))
+    char_cap = min(max_chars, _chars_within_tokens(text, usable, safety_factor))
     if len(text) <= char_cap:
         return text, False
     return text[:char_cap], True
+
+
+def _chars_within_tokens(text: str, tokens: int, safety_factor: float) -> int:
+    """按文本的中英文构成估算可容纳的字符数（保守取值）。"""
+
+    if tokens <= 0 or not text:
+        return 0
+    cjk = sum(1 for ch in text if _is_cjk(ch))
+    other = len(text) - cjk
+    per_char = (
+        (cjk * _CJK_TOKEN_RATIO + other * _OTHER_TOKEN_RATIO)
+        / len(text)
+        * safety_factor
+    )
+    if per_char <= 0:
+        return 0
+    return max(1, int((tokens - 1) / per_char))

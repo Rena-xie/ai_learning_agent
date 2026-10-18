@@ -83,6 +83,27 @@ def test_document_is_truncated_and_marked() -> None:
     assert len(documents_message.content) < 8_000
 
 
+def test_document_truncation_accounts_for_safety_factor() -> None:
+    """安全系数提高后仍应截断容纳文档，而不是整体丢弃。"""
+
+    document = DocumentContext(
+        source_id="S1",
+        title="示例文档",
+        url="https://docs.example.com/guide",
+        fetched_at=datetime.now(UTC),
+        text="正文内容" * 2_000,
+    )
+    bundle = make_builder(token_safety_factor=1.2).build(
+        system_prompt="系统",
+        history=[],
+        user_message="请解释",
+        documents=[document],
+    )
+
+    assert bundle.included_documents == 1
+    assert bundle.notes == ()
+
+
 def test_oversized_question_is_rejected() -> None:
     builder = make_builder(max_tokens=200, output_reserve_tokens=20)
     with pytest.raises(AppError) as excinfo:
@@ -109,9 +130,7 @@ def test_safety_factor_shrinks_effective_budget() -> None:
         max_tokens=400, output_reserve_tokens=20, token_safety_factor=1.6
     )
     # 无安全系数时该问题可通过预算校验
-    lenient.build(
-        system_prompt="系统", history=[], user_message=question, documents=[]
-    )
+    lenient.build(system_prompt="系统", history=[], user_message=question, documents=[])
     # 提高安全系数后，同一问题被判为超出预算
     with pytest.raises(AppError) as excinfo:
         strict.build(
