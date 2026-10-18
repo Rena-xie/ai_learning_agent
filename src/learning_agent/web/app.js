@@ -215,7 +215,10 @@ function renderSources(sources) {
 }
 
 function renderMessages() {
-  elements.messageList.replaceChildren();
+  const list = elements.messageList;
+  const atBottom =
+    list.scrollHeight - list.scrollTop - list.clientHeight < 48;
+  list.replaceChildren();
   if (state.messages.length === 0) {
     const hint = document.createElement("p");
     hint.className = "empty-hint";
@@ -244,7 +247,9 @@ function renderMessages() {
     }
     elements.messageList.append(article);
   }
-  elements.messageList.scrollTop = elements.messageList.scrollHeight;
+  if (atBottom) {
+    list.scrollTop = list.scrollHeight;
+  }
 }
 
 async function loadConversations() {
