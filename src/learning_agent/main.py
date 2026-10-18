@@ -12,12 +12,13 @@ from fastapi.staticfiles import StaticFiles
 
 from learning_agent.agent.context_builder import ContextBuilder
 from learning_agent.agent.runtime import AgentRuntime
-from learning_agent.agent.tool_registry import ToolRegistry
+from learning_agent.agent.tool_registry import ToolHandler, ToolRegistry
 from learning_agent.api.errors import register_exception_handlers
 from learning_agent.api.v1.routes import conversations, health, messages, runs, stats
 from learning_agent.application.chat_service import ChatService
 from learning_agent.application.run_scheduler import RunScheduler
 from learning_agent.config import Settings, get_settings
+from learning_agent.models.base import ModelClient
 from learning_agent.models.provider_adapter import OpenAICompatibleModelClient
 from learning_agent.observability.logging import configure_logging, get_logger
 from learning_agent.persistence.async_repositories import AsyncRepositories
@@ -27,6 +28,15 @@ from learning_agent.persistence.repositories import Repositories
 from learning_agent.tools.document.fetcher import DocumentFetcher
 from learning_agent.tools.document.tool import FetchDocumentTool
 from learning_agent.tools.document.url_policy import Resolver, UrlPolicy
+from learning_agent.tools.knowledge.client import (
+    KnowledgeBaseClient,
+    KnowledgeBasePort,
+)
+from learning_agent.tools.knowledge.tool import (
+    GetIngestionTool,
+    IngestUrlsTool,
+    ListSourcesTool,
+)
 
 logger = get_logger(__name__)
 
@@ -38,11 +48,14 @@ def create_app(
     *,
     document_transport: httpx.AsyncBaseTransport | None = None,
     document_resolver: Resolver | None = None,
+    model_client: ModelClient | None = None,
+    knowledge_client: KnowledgeBasePort | None = None,
 ) -> FastAPI:
     """构建应用实例；必需配置缺失时抛出错误并停止不完整启动。
 
-    ``document_transport`` / ``document_resolver`` 是测试/评估用的注入点：把文档获取指向
-    本地可控服务，不改变任何安全策略（URL 白名单、端口、逐跳重定向等仍然生效）。
+    ``document_transport`` / ``document_resolver`` / ``model_client`` /
+    ``knowledge_client`` 是测试/评估用的注入点：把外部依赖指向本地可控服务，
+    不改变任何安全策略（URL 白名单、端口、逐跳重定向等仍然生效）。
     """
 
     resolved = settings or get_settings()
@@ -76,8 +89,29 @@ def create_app(
     fetch_tool = FetchDocumentTool(
         fetcher, max_document_chars=resolved.max_document_chars
     )
-    tool_registry = ToolRegistry([fetch_tool])
-    model_client = OpenAICompatibleModelClient(
+    tools: list[ToolHandler] = [fetch_tool]
+    active_knowledge_client = knowledge_client
+    if resolved.knowledge_base_enabled:
+        if active_knowledge_client is None:
+            active_knowledge_client = KnowledgeBaseClient(
+                base_url=resolved.knowledge_base_url,
+                connect_timeout_seconds=(
+                    resolved.knowledge_base_connect_timeout_seconds
+                ),
+                read_timeout_seconds=(resolved.knowledge_base_read_timeout_seconds),
+            )
+        tools.extend(
+            [
+                IngestUrlsTool(
+                    active_knowledge_client,
+                    max_urls=resolved.knowledge_base_max_urls,
+                ),
+                GetIngestionTool(active_knowledge_client),
+                ListSourcesTool(active_knowledge_client),
+            ]
+        )
+    tool_registry = ToolRegistry(tools)
+    active_model = model_client or OpenAICompatibleModelClient(
         api_key=resolved.model_api_key,
         base_url=resolved.model_base_url,
         model_name=resolved.model_name,
@@ -91,7 +125,7 @@ def create_app(
         token_safety_factor=resolved.context_token_safety_factor,
     )
     runtime = AgentRuntime(
-        model_client=model_client,
+        model_client=active_model,
         tools=tool_registry,
         context_builder=context_builder,
         repositories=async_repositories,
@@ -121,6 +155,7 @@ def create_app(
                     "env": resolved.app_env,
                     "model": resolved.model_name,
                     "allowed_hosts": len(resolved.allowed_document_hosts),
+                    "knowledge_base": resolved.knowledge_base_enabled,
                 }
             },
         )
@@ -128,7 +163,9 @@ def create_app(
             yield
         finally:
             await scheduler.shutdown()
-            await model_client.aclose()
+            await active_model.aclose()
+            if active_knowledge_client is not None:
+                await active_knowledge_client.aclose()
             engine.dispose()
 
     app = FastAPI(title="AI Learning Agent", version="1.0.0", lifespan=lifespan)
@@ -138,6 +175,8 @@ def create_app(
     app.state.scheduler = scheduler
     app.state.chat_service = chat_service
     app.state.engine = engine
+    app.state.tool_registry = tool_registry
+    app.state.knowledge_client = active_knowledge_client
     register_exception_handlers(app)
     app.include_router(health.router)
     app.include_router(conversations.router)

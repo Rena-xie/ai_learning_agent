@@ -20,7 +20,8 @@ from learning_agent.observability.logging import redact_url
 
 logger = logging.getLogger(__name__)
 
-_MAX_ARGUMENT_CHARS = 2_000
+# 批量入库允许一次提交多个 URL；8k 仍远低于单次工具结果上限。
+_MAX_ARGUMENT_CHARS = 8_000
 _MAX_SUMMARY_CHARS = 600
 
 
@@ -176,7 +177,7 @@ class ToolRegistry:
                 model_payload={
                     "status": "error",
                     "error_code": str(ErrorCode.INVALID_REQUEST),
-                    "message": "工具参数过长，请只提供文档 URL",
+                    "message": "工具参数过长，请减少一次提交的链接数量",
                 },
                 result_summary={
                     "status": "error",

@@ -61,10 +61,17 @@ class Settings(BaseSettings):
     max_document_bytes: int = Field(default=2_000_000, ge=1_000, le=20_000_000)
     max_document_chars: int = Field(default=60_000, ge=1_000, le=1_000_000)
 
+    # ---------- 知识库（v2 M2） ----------
+    knowledge_base_enabled: bool = True
+    knowledge_base_url: str = "http://127.0.0.1:8001"
+    knowledge_base_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
+    knowledge_base_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+    knowledge_base_max_urls: int = Field(default=20, ge=1, le=100)
+
     # ---------- 单次 Run 限制 ----------
     run_timeout_seconds: float = Field(default=120.0, gt=0, le=1800)
     max_model_rounds: int = Field(default=6, ge=1, le=20)
-    max_tool_calls: int = Field(default=3, ge=1, le=10)
+    max_tool_calls: int = Field(default=5, ge=1, le=10)
     max_tool_result_chars: int = Field(default=20_000, ge=1_000, le=200_000)
 
     # ---------- 上下文与输入 ----------
@@ -98,7 +105,13 @@ class Settings(BaseSettings):
             normalized.append(candidate)
         return tuple(dict.fromkeys(normalized))
 
-    @field_validator("model_api_key", "model_name", "model_base_url", "log_level")
+    @field_validator(
+        "model_api_key",
+        "model_name",
+        "model_base_url",
+        "knowledge_base_url",
+        "log_level",
+    )
     @classmethod
     def _strip_text(cls, value: str) -> str:
         return value.strip()

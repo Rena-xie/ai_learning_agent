@@ -20,6 +20,7 @@ class ErrorCategory(StrEnum):
     DOCUMENT = "document"
     MODEL = "model"
     RESOURCE_LIMIT = "resource_limit"
+    KNOWLEDGE_BASE = "knowledge_base"
     PERSISTENCE = "persistence"
     INTERNAL = "internal"
 
@@ -45,6 +46,12 @@ class ErrorCode(StrEnum):
     MODEL_ROUND_LIMIT_EXCEEDED = "model_round_limit_exceeded"
     RUN_TIMEOUT = "run_timeout"
     RUN_INTERRUPTED = "run_interrupted"
+
+    KNOWLEDGE_BASE_UNAVAILABLE = "knowledge_base_unavailable"
+    KNOWLEDGE_BASE_TIMEOUT = "knowledge_base_timeout"
+    KNOWLEDGE_BASE_REJECTED = "knowledge_base_rejected"
+    KNOWLEDGE_BASE_BUSY = "knowledge_base_busy"
+    INGESTION_NOT_FOUND = "ingestion_not_found"
 
     MODEL_TIMEOUT = "model_timeout"
     MODEL_RATE_LIMITED = "model_rate_limited"
@@ -72,6 +79,11 @@ _ERROR_CATEGORY: dict[ErrorCode, ErrorCategory] = {
     ErrorCode.MODEL_ROUND_LIMIT_EXCEEDED: ErrorCategory.RESOURCE_LIMIT,
     ErrorCode.RUN_TIMEOUT: ErrorCategory.RESOURCE_LIMIT,
     ErrorCode.RUN_INTERRUPTED: ErrorCategory.INTERNAL,
+    ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE: ErrorCategory.KNOWLEDGE_BASE,
+    ErrorCode.KNOWLEDGE_BASE_TIMEOUT: ErrorCategory.KNOWLEDGE_BASE,
+    ErrorCode.KNOWLEDGE_BASE_REJECTED: ErrorCategory.KNOWLEDGE_BASE,
+    ErrorCode.KNOWLEDGE_BASE_BUSY: ErrorCategory.KNOWLEDGE_BASE,
+    ErrorCode.INGESTION_NOT_FOUND: ErrorCategory.KNOWLEDGE_BASE,
     ErrorCode.MODEL_TIMEOUT: ErrorCategory.MODEL,
     ErrorCode.MODEL_RATE_LIMITED: ErrorCategory.MODEL,
     ErrorCode.MODEL_ERROR: ErrorCategory.MODEL,
@@ -97,6 +109,11 @@ _ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.MODEL_ROUND_LIMIT_EXCEEDED: 500,
     ErrorCode.RUN_TIMEOUT: 504,
     ErrorCode.RUN_INTERRUPTED: 500,
+    ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE: 502,
+    ErrorCode.KNOWLEDGE_BASE_TIMEOUT: 504,
+    ErrorCode.KNOWLEDGE_BASE_REJECTED: 400,
+    ErrorCode.KNOWLEDGE_BASE_BUSY: 429,
+    ErrorCode.INGESTION_NOT_FOUND: 404,
     ErrorCode.MODEL_TIMEOUT: 504,
     ErrorCode.MODEL_RATE_LIMITED: 429,
     ErrorCode.MODEL_ERROR: 502,
