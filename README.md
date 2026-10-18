@@ -175,6 +175,17 @@ M2 只负责“已开始入库”的即时反馈；完成/异常主动通知在 
 配置见 `.env.example` 的 `KNOWLEDGE_BASE_*`；RAG 与 Agent 同机运行时建议 RAG 使用
 `8001`、Agent 使用 `8000`。
 
+### 入库完成通知（v2 M3）
+
+- `ingest_urls` 成功后写入 `ingestion_watches`，同一 job 幂等。
+- 后台 watcher 轮询 RAG job；未完成时按 3 / 6 / 12 秒退避。
+- 终态写一条 `assistant` 消息（`kind=ingestion_notice`、`run_id=NULL`），
+  不额外调用 LLM，因此不产生模型费用。
+- 成功、部分失败、全部失败、任务不存在、服务不可达分别有固定文案；
+  失败消息带 URL 与 `error_code`。
+- 页面可见时每 5 秒刷新当前对话消息；Agent 重启后继续处理已持久化的 watch。
+- 启动迁移会为 v1 旧库补 `ingestion_watches` 与 `messages.kind`。
+
 ### 来源与引用
 
 - 来源编号（`S1`…）由服务端分配；链接与标题来自服务端登记的真实来源，模型无法伪造。
