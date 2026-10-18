@@ -80,6 +80,11 @@ class Conversation(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    ingestion_watches: Mapped[list[IngestionWatch]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Message(Base):
@@ -97,9 +102,39 @@ class Message(Base):
     run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(
+        String(32), default="chat", server_default=text("'chat'")
+    )
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class IngestionWatch(Base):
+    """异步入库任务的通知订阅（v2 M3）。"""
+
+    __tablename__ = "ingestion_watches"
+    __table_args__ = (
+        Index("ix_ingestion_watches_status_next", "status", "next_check_at"),
+        Index("ix_ingestion_watches_conversation", "conversation_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("conversations.id", ondelete="CASCADE")
+    )
+    status: Mapped[str] = mapped_column(String(16), default="watching")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    next_check_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    notified_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+    conversation: Mapped[Conversation] = relationship(
+        back_populates="ingestion_watches"
+    )
 
 
 class AgentRun(Base):

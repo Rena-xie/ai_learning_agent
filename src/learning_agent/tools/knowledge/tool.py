@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 _MAX_ITEMS = 5
 _MAX_URL_CHARS = 2_048
 _TERMINAL_STATUSES = frozenset({"completed", "partial", "failed"})
+
+
+class WatchRegistrar(Protocol):
+    """入库完成后写入对话通知的注册接口。"""
+
+    async def register(self, *, job_id: str, conversation_id: str) -> None: ...
 
 
 class IngestUrlsArgs(BaseModel):
@@ -74,9 +80,16 @@ class IngestUrlsTool:
         "additionalProperties": False,
     }
 
-    def __init__(self, client: KnowledgeBasePort, *, max_urls: int) -> None:
+    def __init__(
+        self,
+        client: KnowledgeBasePort,
+        *,
+        max_urls: int,
+        watch_registrar: WatchRegistrar | None = None,
+    ) -> None:
         self._client = client
         self._max_urls = max_urls
+        self._watch_registrar = watch_registrar
 
     async def __call__(self, args: IngestUrlsArgs, context: ToolContext) -> ToolOutcome:
         urls, error = _normalize_urls(args.urls, max_urls=self._max_urls)
@@ -114,6 +127,18 @@ class IngestUrlsTool:
         total = _as_int(payload.get("total"))
         skipped = _as_list(payload.get("skipped"))
         note = _ingest_note(status=status, accepted=accepted)
+        if status in {"queued", "running"} and self._watch_registrar is not None:
+            try:
+                await self._watch_registrar.register(
+                    job_id=job_id,
+                    conversation_id=context.conversation_id,
+                )
+            except Exception:  # noqa: BLE001 - 通知注册失败不应让入库失败
+                logger.exception(
+                    "ingestion_watch_register_failed",
+                    extra={"extra_fields": {"job_id": job_id}},
+                )
+                note += "；未能注册自动通知，请用 get_ingestion 查询"
         logger.info(
             "knowledge_ingest_started",
             extra={

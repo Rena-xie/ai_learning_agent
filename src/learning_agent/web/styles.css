@@ -145,6 +145,16 @@ body {
   align-self: flex-start;
 }
 
+.message--notice {
+  align-self: flex-start;
+  border-left: 3px solid var(--accent);
+  background: rgba(47, 111, 237, 0.06);
+}
+
+.message--notice .message-meta {
+  color: var(--accent);
+}
+
 .message-body {
   white-space: normal;
 }

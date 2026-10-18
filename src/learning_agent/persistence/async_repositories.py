@@ -18,6 +18,7 @@ from learning_agent.domain.entities import DocumentContent, UsageRecord
 from learning_agent.domain.enums import RunStatus
 from learning_agent.persistence.repositories import (
     ConversationRecord,
+    IngestionWatchRecord,
     MessageRecord,
     Repositories,
     RunRecord,
@@ -134,6 +135,68 @@ class AsyncRepositories:
         self, conversation_id: str, *, limit: int | None = None
     ) -> list[MessageRecord]:
         return await self._call(self._inner.list_messages, conversation_id, limit=limit)
+
+    async def create_ingestion_watch(
+        self,
+        *,
+        job_id: str,
+        conversation_id: str,
+        next_check_at: datetime,
+    ) -> IngestionWatchRecord:
+        return await self._call(
+            self._inner.create_ingestion_watch,
+            job_id=job_id,
+            conversation_id=conversation_id,
+            next_check_at=next_check_at,
+        )
+
+    async def list_due_ingestion_watches(
+        self, *, now: datetime, limit: int = 20
+    ) -> list[IngestionWatchRecord]:
+        return await self._call(
+            self._inner.list_due_ingestion_watches, now=now, limit=limit
+        )
+
+    async def save_ingestion_watch(
+        self,
+        *,
+        job_id: str,
+        status: str,
+        attempts: int,
+        last_checked_at: datetime | None,
+        next_check_at: datetime,
+        notified_at: datetime | None,
+        last_error: str | None,
+    ) -> None:
+        await self._call(
+            self._inner.save_ingestion_watch,
+            job_id=job_id,
+            status=status,
+            attempts=attempts,
+            last_checked_at=last_checked_at,
+            next_check_at=next_check_at,
+            notified_at=notified_at,
+            last_error=last_error,
+        )
+
+    async def add_ingestion_notice(
+        self, *, conversation_id: str, content: str
+    ) -> MessageRecord:
+        return await self._call(
+            self._inner.add_ingestion_notice,
+            conversation_id=conversation_id,
+            content=content,
+        )
+
+    async def notify_ingestion_watch(
+        self, *, job_id: str, content: str, notified_at: datetime
+    ) -> bool:
+        return await self._call(
+            self._inner.notify_ingestion_watch,
+            job_id=job_id,
+            content=content,
+            notified_at=notified_at,
+        )
 
     async def get_message_by_run(
         self,

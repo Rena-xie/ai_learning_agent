@@ -226,12 +226,17 @@ function renderMessages() {
   }
   for (const message of state.messages) {
     const article = document.createElement("article");
-    article.className = `message message--${message.role}`;
+    const notice = message.kind === "ingestion_notice" ? " message--notice" : "";
+    article.className = `message message--${message.role}${notice}`;
     const meta = document.createElement("div");
     meta.className = "message-meta";
-    meta.textContent = `${message.role === "user" ? "我" : "助手"} · ${formatTime(
-      message.created_at,
-    )}`;
+    const speaker =
+      message.kind === "ingestion_notice"
+        ? "知识库"
+        : message.role === "user"
+          ? "我"
+          : "助手";
+    meta.textContent = `${speaker} · ${formatTime(message.created_at)}`;
     const body = renderMarkdown(message.content, message.sources);
     article.append(meta, body);
     if (message.sources && message.sources.length > 0) {
@@ -250,6 +255,25 @@ async function loadConversations() {
 async function loadMessages(conversationId) {
   state.messages = await api(`/api/v1/conversations/${conversationId}/messages`);
   renderMessages();
+}
+
+function startMessagePolling() {
+  // 后台 watcher 会写入入库完成/失败通知；页面可见时轻量轮询消息。
+  setInterval(async () => {
+    if (
+      document.visibilityState !== "visible" ||
+      state.busy ||
+      !state.currentId
+    ) {
+      return;
+    }
+    try {
+      await loadMessages(state.currentId);
+      await loadConversations();
+    } catch {
+      // 本地轮询失败不打断输入与当前界面
+    }
+  }, 5000);
 }
 
 async function selectConversation(conversationId) {
@@ -366,4 +390,5 @@ elements.composer.addEventListener("submit", sendMessage);
   } catch (error) {
     setStatus(`初始化失败：${error.message}`, "error");
   }
+  startMessagePolling();
 })();

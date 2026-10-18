@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     knowledge_base_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
     knowledge_base_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
     knowledge_base_max_urls: int = Field(default=20, ge=1, le=100)
+    ingestion_poll_interval_s: float = Field(default=2.0, gt=0, le=60)
+    ingestion_poll_max_interval_s: float = Field(default=12.0, gt=0, le=300)
+    ingestion_watch_timeout_s: float = Field(default=1800.0, gt=0, le=86_400)
+    ingestion_max_active_watches: int = Field(default=20, ge=1, le=200)
 
     # ---------- 单次 Run 限制 ----------
     run_timeout_seconds: float = Field(default=120.0, gt=0, le=1800)

@@ -18,6 +18,7 @@ EXPECTED_TABLES = {
     "tool_calls",
     "document_snapshots",
     "run_sources",
+    "ingestion_watches",
     "alembic_version",
 }
 
@@ -37,9 +38,13 @@ def test_fresh_database_is_migrated_and_usable(tmp_path) -> None:
     engine = create_engine(url)
     try:
         tables = set(inspect(engine).get_table_names())
+        message_columns = {
+            column["name"] for column in inspect(engine).get_columns("messages")
+        }
     finally:
         engine.dispose()
     assert tables >= EXPECTED_TABLES
+    assert "kind" in message_columns
 
     repositories = make_repositories(url)
     conversation = repositories.create_conversation(title="迁移后可用")
@@ -104,6 +109,81 @@ def test_legacy_database_is_stamped_without_data_loss(tmp_path) -> None:
     upgraded = make_repositories(url)
     messages = upgraded.list_messages(conversation.id)
     assert [message.content for message in messages] == ["升级前写入的消息"]
+
+
+def test_v1_legacy_database_gets_notification_schema(tmp_path) -> None:
+    """真实 v1 旧库（无 kind / watches）应补跑 0002，而不是直接 stamp head。"""
+
+    url = f"sqlite:///{(tmp_path / 'legacy-v1.db').as_posix()}"
+    engine = build_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE conversations (
+                    id VARCHAR(36) PRIMARY KEY,
+                    title VARCHAR(120) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id VARCHAR(36) NOT NULL,
+                    run_id VARCHAR(36),
+                    role VARCHAR(16) NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    FOREIGN KEY(conversation_id)
+                        REFERENCES conversations(id) ON DELETE CASCADE
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO conversations
+                    (id, title, created_at, updated_at)
+                VALUES
+                    ('conv-1', '旧对话', '2026-10-01 00:00:00',
+                     '2026-10-01 00:00:00')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO messages
+                    (conversation_id, role, content, created_at)
+                VALUES
+                    ('conv-1', 'user', '旧消息', '2026-10-01 00:00:00')
+                """
+            )
+        )
+    engine.dispose()
+
+    assert schema_state(url) == "legacy"
+    apply_migrations(url)
+
+    engine = create_engine(url)
+    try:
+        tables = set(inspect(engine).get_table_names())
+        columns = {column["name"] for column in inspect(engine).get_columns("messages")}
+    finally:
+        engine.dispose()
+    assert "ingestion_watches" in tables
+    assert "kind" in columns
+
+    repositories = make_repositories(url)
+    messages = repositories.list_messages("conv-1")
+    assert [message.content for message in messages] == ["旧消息"]
+    assert messages[0].kind == "chat"
 
 
 def test_interrupted_migration_is_recovered(tmp_path) -> None:

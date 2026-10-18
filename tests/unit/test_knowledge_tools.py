@@ -70,6 +70,17 @@ class FakeKnowledgeClient:
         return None
 
 
+class FakeWatchRegistrar:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.calls: list[tuple[str, str]] = []
+        self.fail = fail
+
+    async def register(self, *, job_id: str, conversation_id: str) -> None:
+        if self.fail:
+            raise RuntimeError("watcher unavailable")
+        self.calls.append((job_id, conversation_id))
+
+
 async def test_ingest_urls_dedupes_and_reports_started() -> None:
     client = FakeKnowledgeClient(
         create_response={
@@ -81,7 +92,8 @@ async def test_ingest_urls_dedupes_and_reports_started() -> None:
             "created_at": "2026-10-19T00:00:00Z",
         }
     )
-    tool = IngestUrlsTool(client, max_urls=20)
+    registrar = FakeWatchRegistrar()
+    tool = IngestUrlsTool(client, max_urls=20, watch_registrar=registrar)
 
     outcome = await tool(
         IngestUrlsArgs(
@@ -104,6 +116,46 @@ async def test_ingest_urls_dedupes_and_reports_started() -> None:
     assert call[0] == ["https://example.com/a", "https://example.com/b"]
     assert call[1] == "run-1"
     assert call[2].startswith("run-1:")
+    assert registrar.calls == [("job_1", "conv-1")]
+
+
+async def test_ingest_urls_does_not_watch_terminal_job() -> None:
+    client = FakeKnowledgeClient(
+        create_response={
+            "job_id": "job_2",
+            "status": "completed",
+            "total": 1,
+            "accepted": 0,
+            "skipped": [{"url": "https://example.com/a", "reason": "already_indexed"}],
+        }
+    )
+    registrar = FakeWatchRegistrar(fail=True)
+    tool = IngestUrlsTool(client, max_urls=20, watch_registrar=registrar)
+
+    outcome = await tool(IngestUrlsArgs(urls=["https://example.com/a"]), make_context())
+
+    assert outcome.ok is True
+    assert registrar.calls == []
+
+
+async def test_ingest_urls_survives_watch_registration_failure() -> None:
+    client = FakeKnowledgeClient(
+        create_response={
+            "job_id": "job_3",
+            "status": "queued",
+            "total": 1,
+            "accepted": 1,
+            "skipped": [],
+        }
+    )
+    tool = IngestUrlsTool(
+        client, max_urls=20, watch_registrar=FakeWatchRegistrar(fail=True)
+    )
+
+    outcome = await tool(IngestUrlsArgs(urls=["https://example.com/a"]), make_context())
+
+    assert outcome.ok is True
+    assert "未能注册自动通知" in outcome.model_payload["note"]
 
 
 async def test_ingest_urls_rejects_non_http_without_calling_rag() -> None:

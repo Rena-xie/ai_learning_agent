@@ -84,6 +84,7 @@ async def list_messages(
                 role=message.role,
                 content=message.content,
                 run_id=message.run_id,
+                kind=message.kind,
                 created_at=message.created_at,
                 sources=sources,
             )

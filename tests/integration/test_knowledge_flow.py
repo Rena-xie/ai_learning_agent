@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -88,6 +89,8 @@ async def test_agent_starts_ingestion_without_claiming_completion(
     )
 
     async with app.router.lifespan_context(app):
+        # 测试中停掉后台循环，后续手动触发一次轮询，避免定时器竞争。
+        await app.state.ingestion_watcher.stop()
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
@@ -111,7 +114,33 @@ async def test_agent_starts_ingestion_without_claiming_completion(
             assert run["tool_calls"][0]["tool_name"] == "ingest_urls"
             assert run["tool_calls"][0]["status"] == "succeeded"
 
-    assert knowledge.calls == [("create", ["https://example.com/a"])]
+            watches = await app.state.async_repositories.list_due_ingestion_watches(
+                now=datetime.now(UTC) + timedelta(seconds=10)
+            )
+            assert [watch.job_id for watch in watches] == ["job_test_1"]
+
+            await app.state.async_repositories.save_ingestion_watch(
+                job_id="job_test_1",
+                status="watching",
+                attempts=0,
+                last_checked_at=None,
+                next_check_at=datetime.now(UTC) - timedelta(seconds=1),
+                notified_at=None,
+                last_error=None,
+            )
+            assert await app.state.ingestion_watcher.poll_once() == 1
+
+            history = (
+                await client.get(f"/api/v1/conversations/{conversation_id}/messages")
+            ).json()
+            notices = [
+                message for message in history if message["kind"] == "ingestion_notice"
+            ]
+            assert len(notices) == 1
+            assert "已完成入库" in notices[0]["content"]
+            assert notices[0]["run_id"] is None
+
+    assert ("create", ["https://example.com/a"]) in knowledge.calls
     assert knowledge.closed is True
 
 

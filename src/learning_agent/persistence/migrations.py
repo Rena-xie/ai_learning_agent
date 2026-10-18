@@ -53,21 +53,45 @@ def schema_state(database_url: str) -> str:
 def apply_migrations(database_url: str) -> None:
     """把数据库升级到最新版本。
 
-    阶段 1 由 ``create_all`` 建立的库没有版本表：先 ``stamp head`` 再升级。
-    该假设仅在旧库结构与当前初始迁移一致时成立（v1.0 阶段 2 时成立）；
-    后续若初始迁移有结构变更，需要人工确认旧库后再 stamp。
+    阶段 1 由 ``create_all`` 建立的库没有版本表：先 stamp 到与现有结构匹配的
+    版本，再执行后续迁移。这样既兼容当前模型 create_all 出来的旧库，也不会
+    跳过新增的 0002 迁移。
     """
 
     state = schema_state(database_url)
     config = build_alembic_config(database_url)
     if state == "legacy":
+        stamp_revision = _legacy_stamp_revision(database_url)
         logger.warning(
             "database_schema_legacy",
-            extra={"extra_fields": {"action": "stamp_head"}},
+            extra={
+                "extra_fields": {
+                    "action": "stamp",
+                    "revision": stamp_revision,
+                }
+            },
         )
-        command.stamp(config, "head")
+        command.stamp(config, stamp_revision)
     command.upgrade(config, "head")
     logger.info(
         "database_schema_ready",
         extra={"extra_fields": {"previous_state": state}},
     )
+
+
+def _legacy_stamp_revision(database_url: str) -> str:
+    """判断无版本记录的旧库是否需要补跑 0002。"""
+
+    engine = create_engine(database_url)
+    try:
+        tables = set(inspect(engine).get_table_names())
+        columns: set[str] = set()
+        if "messages" in tables:
+            columns = {
+                column["name"] for column in inspect(engine).get_columns("messages")
+            }
+    finally:
+        engine.dispose()
+    if "ingestion_watches" in tables and "kind" in columns:
+        return "head"
+    return "0001_initial_schema"

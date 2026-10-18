@@ -31,6 +31,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     run_id: str | None = None
+    kind: str = "chat"
     created_at: datetime
 
 

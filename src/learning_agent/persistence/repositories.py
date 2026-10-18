@@ -24,6 +24,7 @@ from learning_agent.persistence.models import (
     AgentRun,
     Conversation,
     DocumentSnapshot,
+    IngestionWatch,
     Message,
     RunSource,
     ToolCall,
@@ -48,6 +49,21 @@ class MessageRecord:
     run_id: str | None
     role: str
     content: str
+    kind: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class IngestionWatchRecord:
+    id: int
+    job_id: str
+    conversation_id: str
+    status: str
+    attempts: int
+    last_checked_at: datetime | None
+    next_check_at: datetime
+    notified_at: datetime | None
+    last_error: str | None
     created_at: datetime
 
 
@@ -188,6 +204,7 @@ class Repositories:
         role: str,
         content: str,
         run_id: str | None = None,
+        kind: str = "chat",
     ) -> MessageRecord:
         with self._session() as session:
             conversation = session.get(Conversation, conversation_id)
@@ -198,6 +215,7 @@ class Repositories:
                 role=role,
                 content=content,
                 run_id=run_id,
+                kind=kind,
             )
             conversation.updated_at = utcnow()
             session.add(message)
@@ -217,6 +235,126 @@ class Repositories:
                 statement = statement.limit(limit)
             rows = session.scalars(statement).all()
             return [_to_message(row) for row in rows]
+
+    # ---------- 入库通知 ----------
+
+    def create_ingestion_watch(
+        self,
+        *,
+        job_id: str,
+        conversation_id: str,
+        next_check_at: datetime,
+    ) -> IngestionWatchRecord:
+        """登记一个任务通知订阅；同一 job 幂等。"""
+
+        with self._session() as session:
+            existing = session.scalar(
+                select(IngestionWatch).where(IngestionWatch.job_id == job_id)
+            )
+            if existing is not None:
+                return _to_watch(existing)
+            if session.get(Conversation, conversation_id) is None:
+                raise AppError(ErrorCode.NOT_FOUND, "对话不存在或已被删除")
+            watch = IngestionWatch(
+                job_id=job_id,
+                conversation_id=conversation_id,
+                status="watching",
+                attempts=0,
+                next_check_at=next_check_at,
+                created_at=utcnow(),
+            )
+            session.add(watch)
+            session.flush()
+            return _to_watch(watch)
+
+    def list_due_ingestion_watches(
+        self, *, now: datetime, limit: int = 20
+    ) -> list[IngestionWatchRecord]:
+        with self._session() as session:
+            rows = session.scalars(
+                select(IngestionWatch)
+                .where(
+                    IngestionWatch.status == "watching",
+                    IngestionWatch.next_check_at <= now,
+                )
+                .order_by(IngestionWatch.next_check_at, IngestionWatch.id)
+                .limit(limit)
+            ).all()
+            return [_to_watch(row) for row in rows]
+
+    def save_ingestion_watch(
+        self,
+        *,
+        job_id: str,
+        status: str,
+        attempts: int,
+        last_checked_at: datetime | None,
+        next_check_at: datetime,
+        notified_at: datetime | None,
+        last_error: str | None,
+    ) -> None:
+        """保存 watcher 状态；对话已删除时静默跳过。"""
+
+        with self._session() as session:
+            watch = session.scalar(
+                select(IngestionWatch).where(IngestionWatch.job_id == job_id)
+            )
+            if watch is None:
+                return
+            watch.status = status
+            watch.attempts = attempts
+            watch.last_checked_at = last_checked_at
+            watch.next_check_at = next_check_at
+            watch.notified_at = notified_at
+            watch.last_error = last_error
+
+    def add_ingestion_notice(
+        self, *, conversation_id: str, content: str
+    ) -> MessageRecord:
+        """写入确定性的入库通知消息（不创建 Run）。"""
+
+        return self.add_message(
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT.value,
+            content=content,
+            kind="ingestion_notice",
+        )
+
+    def notify_ingestion_watch(
+        self, *, job_id: str, content: str, notified_at: datetime
+    ) -> bool:
+        """原子地写入通知并标记 watcher，避免重复通知。"""
+
+        with self._session() as session:
+            watch = session.scalar(
+                select(IngestionWatch).where(IngestionWatch.job_id == job_id)
+            )
+            if (
+                watch is None
+                or watch.status != "watching"
+                or watch.notified_at is not None
+            ):
+                return False
+            conversation = session.get(Conversation, watch.conversation_id)
+            if conversation is None:
+                return False
+            conversation.updated_at = utcnow()
+            session.add(
+                Message(
+                    conversation_id=watch.conversation_id,
+                    role=MessageRole.ASSISTANT.value,
+                    content=content,
+                    run_id=None,
+                    kind="ingestion_notice",
+                )
+            )
+            watch.status = "notified"
+            watch.notified_at = notified_at
+            watch.last_checked_at = notified_at
+            watch.next_check_at = notified_at
+            watch.last_error = None
+            session.flush()
+            return True
 
     # ---------- 运行 ----------
 
@@ -733,6 +871,22 @@ def _to_message(row: Message) -> MessageRecord:
         run_id=row.run_id,
         role=row.role,
         content=row.content,
+        kind=row.kind,
+        created_at=row.created_at,
+    )
+
+
+def _to_watch(row: IngestionWatch) -> IngestionWatchRecord:
+    return IngestionWatchRecord(
+        id=row.id,
+        job_id=row.job_id,
+        conversation_id=row.conversation_id,
+        status=row.status,
+        attempts=row.attempts,
+        last_checked_at=row.last_checked_at,
+        next_check_at=row.next_check_at,
+        notified_at=row.notified_at,
+        last_error=row.last_error,
         created_at=row.created_at,
     )
 

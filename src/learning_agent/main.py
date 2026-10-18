@@ -16,6 +16,7 @@ from learning_agent.agent.tool_registry import ToolHandler, ToolRegistry
 from learning_agent.api.errors import register_exception_handlers
 from learning_agent.api.v1.routes import conversations, health, messages, runs, stats
 from learning_agent.application.chat_service import ChatService
+from learning_agent.application.ingestion_watcher import IngestionWatcher
 from learning_agent.application.run_scheduler import RunScheduler
 from learning_agent.config import Settings, get_settings
 from learning_agent.models.base import ModelClient
@@ -91,6 +92,7 @@ def create_app(
     )
     tools: list[ToolHandler] = [fetch_tool]
     active_knowledge_client = knowledge_client
+    ingestion_watcher: IngestionWatcher | None = None
     if resolved.knowledge_base_enabled:
         if active_knowledge_client is None:
             active_knowledge_client = KnowledgeBaseClient(
@@ -100,11 +102,20 @@ def create_app(
                 ),
                 read_timeout_seconds=(resolved.knowledge_base_read_timeout_seconds),
             )
+        ingestion_watcher = IngestionWatcher(
+            knowledge_client=active_knowledge_client,
+            repositories=async_repositories,
+            poll_interval_s=resolved.ingestion_poll_interval_s,
+            max_backoff_s=resolved.ingestion_poll_max_interval_s,
+            timeout_s=resolved.ingestion_watch_timeout_s,
+            batch_size=resolved.ingestion_max_active_watches,
+        )
         tools.extend(
             [
                 IngestUrlsTool(
                     active_knowledge_client,
                     max_urls=resolved.knowledge_base_max_urls,
+                    watch_registrar=ingestion_watcher,
                 ),
                 GetIngestionTool(active_knowledge_client),
                 ListSourcesTool(active_knowledge_client),
@@ -160,8 +171,12 @@ def create_app(
             },
         )
         try:
+            if ingestion_watcher is not None:
+                ingestion_watcher.start()
             yield
         finally:
+            if ingestion_watcher is not None:
+                await ingestion_watcher.stop()
             await scheduler.shutdown()
             await active_model.aclose()
             if active_knowledge_client is not None:
@@ -177,6 +192,7 @@ def create_app(
     app.state.engine = engine
     app.state.tool_registry = tool_registry
     app.state.knowledge_client = active_knowledge_client
+    app.state.ingestion_watcher = ingestion_watcher
     register_exception_handlers(app)
     app.include_router(health.router)
     app.include_router(conversations.router)
