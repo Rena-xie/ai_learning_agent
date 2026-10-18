@@ -41,6 +41,7 @@ class FakeKnowledgeClient:
         *,
         client_run_id: str | None = None,
         idempotency_key: str | None = None,
+        force_refresh: bool = False,
     ) -> dict[str, object]:
         self.calls.append(("create", list(urls)))
         return {

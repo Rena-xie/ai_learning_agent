@@ -28,6 +28,7 @@ class KnowledgeBasePort(Protocol):
         *,
         client_run_id: str | None = None,
         idempotency_key: str | None = None,
+        force_refresh: bool = False,
     ) -> dict[str, object]: ...
 
     async def get_ingestion(self, job_id: str) -> dict[str, object]: ...
@@ -65,12 +66,17 @@ class KnowledgeBaseClient:
         *,
         client_run_id: str | None = None,
         idempotency_key: str | None = None,
+        force_refresh: bool = False,
     ) -> dict[str, object]:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
         return await self._request(
             "POST",
             "/api/v1/ingestions",
-            json={"urls": list(urls), "client_run_id": client_run_id},
+            json={
+                "urls": list(urls),
+                "client_run_id": client_run_id,
+                "force_refresh": force_refresh,
+            },
             headers=headers,
         )
 

@@ -59,6 +59,7 @@ async def test_create_ingestion_sends_urls_and_idempotency_key() -> None:
     assert seen["body"] == {
         "urls": ["https://example.com/a", "https://example.com/b"],
         "client_run_id": "run-1",
+        "force_refresh": False,
     }
     assert seen["idempotency"] == "key-1"
 

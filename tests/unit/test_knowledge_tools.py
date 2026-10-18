@@ -69,8 +69,14 @@ class FakeKnowledgeClient:
         *,
         client_run_id: str | None = None,
         idempotency_key: str | None = None,
+        force_refresh: bool = False,
     ) -> dict[str, object]:
-        self.calls.append(("create", (list(urls), client_run_id, idempotency_key)))
+        self.calls.append(
+            (
+                "create",
+                (list(urls), client_run_id, idempotency_key, force_refresh),
+            )
+        )
         if self.error is not None:
             raise self.error
         return self.create_response
@@ -143,7 +149,30 @@ async def test_ingest_urls_dedupes_and_reports_started() -> None:
     assert call[0] == ["https://example.com/a", "https://example.com/b"]
     assert call[1] == "run-1"
     assert call[2].startswith("run-1:")
+    assert call[3] is False
     assert registrar.calls == [("job_1", "conv-1")]
+
+
+async def test_ingest_urls_passes_force_refresh() -> None:
+    client = FakeKnowledgeClient(
+        create_response={
+            "job_id": "job_refresh",
+            "status": "queued",
+            "total": 1,
+            "accepted": 1,
+            "skipped": [],
+        }
+    )
+    tool = IngestUrlsTool(client, max_urls=20)
+
+    outcome = await tool(
+        IngestUrlsArgs(urls=["https://example.com/a"], force_refresh=True),
+        make_context(),
+    )
+
+    assert outcome.ok is True
+    call = client.calls[0][1]
+    assert call[3] is True
 
 
 async def test_ingest_urls_does_not_watch_terminal_job() -> None:

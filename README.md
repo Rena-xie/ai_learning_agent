@@ -166,6 +166,8 @@ v2 新增三个薄工具，把 Learning Agent 与 RAG 知识库连接起来：
 | `get_ingestion` | 查询异步入库任务进度与失败原因 |
 | `list_sources` | 查看知识库最近收录的来源 |
 
+`ingest_urls` 支持 `force_refresh=true`，用于重新抓取已入库链接并更新内容。
+
 意图区分：
 
 - “读一下/解释/总结” → `fetch_document`，只读不写。

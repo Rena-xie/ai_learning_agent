@@ -34,6 +34,10 @@ class IngestUrlsArgs(BaseModel):
         min_length=1,
         description="要长期保存到知识库的公开网页 URL 列表",
     )
+    force_refresh: bool = Field(
+        default=False,
+        description="是否重新抓取已入库的 URL",
+    )
 
 
 class GetIngestionArgs(BaseModel):
@@ -91,7 +95,12 @@ class IngestUrlsTool:
                 "minItems": 1,
                 "maxItems": 20,
                 "description": "要长期保存到知识库的公开网页 URL 列表",
-            }
+            },
+            "force_refresh": {
+                "type": "boolean",
+                "default": False,
+                "description": "是否重新抓取已入库的 URL",
+            },
         },
         "required": ["urls"],
         "additionalProperties": False,
@@ -118,6 +127,7 @@ class IngestUrlsTool:
                 urls,
                 client_run_id=context.run_id,
                 idempotency_key=_idempotency_key(context.run_id, urls),
+                force_refresh=args.force_refresh,
             )
         except AppError as exc:
             logger.info(
