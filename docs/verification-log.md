@@ -1,6 +1,6 @@
 # 验收与演练记录（v1.0）
 
-记录实际执行过的验证命令与结果，作为 `项目说明_v1.0.md` §21 验收清单的证据。
+记录实际执行过的验证命令与结果，作为 v1.0 验收清单的证据。
 
 ## 本地运行
 
@@ -73,9 +73,9 @@ docker compose down
 
 ## v1.1 工程优化（阶段 6）
 
-**状态：代码与文档已完成；完整测试套件未在本环境执行，需在本机运行（见下）。**
+**状态：已完成；2026-10-18 在本机补跑离线测试与静态检查。**
 
-本次改造在「无外网、且项目 `.venv` 为 Windows 构建（Linux 沙箱不可用）」的环境中完成，
+改造初期在「无外网、且项目 `.venv` 为 Windows 构建（Linux 沙箱不可用）」的环境中完成，
 无法执行 `uv run pytest` 与 `uv run ruff`。为此采用了如下**替代验证**（均已实际执行）：
 
 | 项目 | 手段 | 结果 |
@@ -88,25 +88,28 @@ docker compose down
 | 评估回归判定 | 离线脚本直接运行 `evals.regression.find_regressions` | 逐案例回归与整体通过率下降均能检出，且无误报 |
 | 前端脚本 | `node --check app.js` + 行内标记分词脚本 | 语法与分词逻辑通过 |
 
-**待在本机执行（建议顺序）**：
+### 本机补跑（2026-10-18）
 
-```bash
-uv sync
-uv run ruff format --check .
-uv run ruff check .
-uv run pytest -m "not real_model"
-uv run pytest                                                  # 含真实模型（产生费用）
-uv run python -m evals.run_eval --baseline evals/results/baseline-20261013.json
-```
+项目目录改名后旧 `.venv` 的基础解释器路径失效，按约定删除并重新执行 `uv sync` 重建环境。
 
-逐条命令、预期结果与失败排查见 [smoke-checklist-v1.1.md](smoke-checklist-v1.1.md)。
+| 项目 | 命令 | 结果 |
+|---|---|---|
+| 格式检查 | `uv run ruff format --check .` | 通过（顺带格式化 7 个历史文件） |
+| 静态检查 | `uv run ruff check .` | 通过（修复 2 处历史问题：`SIM105`、`E501`） |
+| 离线测试 | `uv run pytest -m "not real_model"` | 174 passed，12 deselected |
 
-说明：本环境缺少 CPython 3.12 与第三方依赖，且无外网，因此以上命令未执行；
-异步提交、后台执行、真实问答与评估回归等端到端验证同样需要在本机完成。
+补跑中发现并修复一处回归：上下文估算的中文 token 比例由 0.6 提升到 0.9 后，
+文档截断仍按固定 1.6 字符/token 计算，导致本可截断容纳的文档被整体丢弃。
+现已按文本字符构成与安全系数反推字符上限，并补充回归测试
+`test_document_truncation_accounts_for_safety_factor`。
 
-### 新增测试（共 26 个测试函数，未在本环境执行）
+**未重新执行**：真实模型测试（12 个）与评估回归（需要外部 API 与费用）。
+v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/results/baseline-20261013.json`。
+
+### 新增测试（共 26 个测试函数）
 
 新增文件：`tests/integration/test_async_run.py`、`tests/integration/test_repositories_async.py`、
 `tests/unit/test_run_scheduler.py`、`tests/unit/test_cost.py`、`tests/unit/test_eval_regression.py`；
 补充用例：`test_context_builder.py`、`test_citation_validator.py`、`test_model_failures.py`、
 `test_run_stats.py`、`test_conversations_api.py`、`test_runtime_limits.py`。
+上述测试已随离线测试套件执行（174 passed）。
