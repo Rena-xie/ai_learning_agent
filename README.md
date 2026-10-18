@@ -186,6 +186,18 @@ M2 只负责“已开始入库”的即时反馈；完成/异常主动通知在 
 - 页面可见时每 5 秒刷新当前对话消息；Agent 重启后继续处理已持久化的 watch。
 - 启动迁移会为 v1 旧库补 `ingestion_watches` 与 `messages.kind`。
 
+### 知识库检索与引用（v2 M4）
+
+- `search_knowledge` 调用 RAG 的 `/api/v1/search`，返回带 `source_id` 的证据片段。
+- Agent 基于证据作答，引用 `[S1]` / `[S2]`，由原有服务端引用校验器验证。
+- 一次工具调用可登记多个来源；知识库证据标记 `provider=knowledge_base`，
+  不会被当作完整文档在后续对话中复用。
+- Web UI 的来源列表会区分“知识库（召回于）”与“网页（获取于）”。
+- `KNOWLEDGE_BASE_MIN_SIMILARITY`（默认 0.58）控制低相关拒答；
+  更换 Embedding 模型后需要重新校准。
+- 意图区分：已保存内容/知识库问答 → `search_knowledge`；
+  当前链接阅读 → `fetch_document`。
+
 ### 来源与引用
 
 - 来源编号（`S1`…）由服务端分配；链接与标题来自服务端登记的真实来源，模型无法伪造。
