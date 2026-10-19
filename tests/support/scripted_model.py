@@ -30,6 +30,7 @@ class ScriptedModelClient:
         self._responses = list(responses)
         self._delay_seconds = delay_seconds
         self.calls = 0
+        self.seen_messages: list[tuple[ChatMessage, ...]] = []
         self.model_name = "scripted-model"
 
     async def complete(
@@ -42,6 +43,7 @@ class ScriptedModelClient:
     ) -> ModelResponse:
         if self._delay_seconds:
             await asyncio.sleep(self._delay_seconds)
+        self.seen_messages.append(tuple(messages))
         index = self.calls
         self.calls += 1
         if index >= len(self._responses):

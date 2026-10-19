@@ -414,6 +414,9 @@ class AgentRuntime:
             role = record.role
             if role not in {MessageRole.USER.value, MessageRole.ASSISTANT.value}:
                 continue
+            # 入库通知是给用户看的事实消息，不应作为对话内容再次送入模型。
+            if record.kind != "chat":
+                continue
             # 显式排除本次运行刚写入的用户消息，不依赖「最后一条」的位置假设
             if record.run_id == run_id:
                 continue
