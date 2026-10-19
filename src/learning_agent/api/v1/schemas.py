@@ -118,4 +118,11 @@ class RunStatsResponse(BaseModel):
     tool_calls_failed: int
     document_fetches_total: int
     document_fetch_success_rate: float | None = None
+    knowledge_tool_calls: int = 0
+    knowledge_tool_failed: int = 0
+    knowledge_tool_failure_rate: float | None = None
+    knowledge_tool_timeout: int = 0
+    knowledge_tool_timeout_rate: float | None = None
+    knowledge_tool_avg_ms: int | None = None
+    ingestion_watch_backlog: int = 0
     error_codes: dict[str, int] = Field(default_factory=dict)

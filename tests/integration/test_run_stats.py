@@ -18,16 +18,24 @@ def make_settings(tmp_path):
     )
 
 
-def add_tool_call(repositories, run_id: str, *, status: str, error_code: str | None):
+def add_tool_call(
+    repositories,
+    run_id: str,
+    *,
+    status: str,
+    error_code: str | None,
+    tool_name: str = "fetch_document",
+    duration_ms: int = 500,
+):
     now = datetime.now(UTC)
     repositories.add_tool_call(
         run_id=run_id,
-        tool_call_id=f"tc-{status}",
-        tool_name="fetch_document",
+        tool_call_id=f"tc-{tool_name}-{status}",
+        tool_name=tool_name,
         status=status,
         started_at=now,
         finished_at=now,
-        duration_ms=500,
+        duration_ms=duration_ms,
         arguments_summary='{"url": "https://docs.example.com/x"}',
         result_summary='{"status": "ok"}',
         error_code=error_code,
@@ -102,6 +110,8 @@ async def test_stats_aggregate_runs_and_tools(tmp_path) -> None:
     assert body["error_codes"] == {"run_timeout": 1}
     # 未配置单价时成本保持为空，不编造
     assert body["estimated_cost_total"] is None
+    assert body["knowledge_tool_calls"] == 0
+    assert body["ingestion_watch_backlog"] == 0
 
 
 async def test_stats_include_estimated_cost(tmp_path) -> None:
@@ -126,3 +136,54 @@ async def test_stats_include_estimated_cost(tmp_path) -> None:
         response = await client.get("/api/v1/stats")
 
     assert response.json()["estimated_cost_total"] == 0.002
+
+
+async def test_stats_include_knowledge_metrics(tmp_path) -> None:
+    app = create_app(make_settings(tmp_path))
+    repositories = app.state.repositories
+    conversation = repositories.create_conversation(title="知识库统计")
+    run_id = "cccccccc-0000-0000-0000-000000000001"
+    repositories.create_run(
+        run_id=run_id,
+        conversation_id=conversation.id,
+        model_name="test-model",
+        prompt_version="v1",
+    )
+    repositories.finish_run(
+        run_id=run_id,
+        status=RunStatus.COMPLETED,
+        usage=UsageRecord(),
+        duration_ms=100,
+    )
+    add_tool_call(
+        repositories,
+        run_id,
+        status="succeeded",
+        error_code=None,
+        tool_name="ingest_urls",
+        duration_ms=200,
+    )
+    add_tool_call(
+        repositories,
+        run_id,
+        status="timeout",
+        error_code="knowledge_base_timeout",
+        tool_name="search_knowledge",
+        duration_ms=1_000,
+    )
+    repositories.create_ingestion_watch(
+        job_id="job_stats",
+        conversation_id=conversation.id,
+        next_check_at=datetime.now(UTC),
+    )
+
+    async with running_client(app) as client:
+        body = (await client.get("/api/v1/stats")).json()
+
+    assert body["knowledge_tool_calls"] == 2
+    assert body["knowledge_tool_failed"] == 1
+    assert body["knowledge_tool_timeout"] == 1
+    assert body["knowledge_tool_timeout_rate"] == 0.5
+    assert body["knowledge_tool_failure_rate"] == 0.5
+    assert body["knowledge_tool_avg_ms"] == 600
+    assert body["ingestion_watch_backlog"] == 1

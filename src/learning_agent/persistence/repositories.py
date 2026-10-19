@@ -829,6 +829,64 @@ class Repositories:
                 .where(AgentRun.error_code.is_not(None))
                 .group_by(AgentRun.error_code)
             ).all()
+            knowledge_tool_names = (
+                "ingest_urls",
+                "get_ingestion",
+                "list_sources",
+                "search_knowledge",
+            )
+            knowledge_tool_calls = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(ToolCall)
+                    .where(ToolCall.tool_name.in_(knowledge_tool_names))
+                )
+                or 0
+            )
+            knowledge_tool_failed = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(ToolCall)
+                    .where(
+                        ToolCall.tool_name.in_(knowledge_tool_names),
+                        ToolCall.status.in_(
+                            [
+                                ToolCallStatus.FAILED.value,
+                                ToolCallStatus.REJECTED.value,
+                                ToolCallStatus.TIMEOUT.value,
+                            ]
+                        ),
+                    )
+                )
+                or 0
+            )
+            knowledge_tool_timeout = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(ToolCall)
+                    .where(
+                        ToolCall.tool_name.in_(knowledge_tool_names),
+                        ToolCall.status == ToolCallStatus.TIMEOUT.value,
+                    )
+                )
+                or 0
+            )
+            knowledge_durations = list(
+                session.scalars(
+                    select(ToolCall.duration_ms).where(
+                        ToolCall.tool_name.in_(knowledge_tool_names),
+                        ToolCall.duration_ms.is_not(None),
+                    )
+                ).all()
+            )
+            ingestion_watch_backlog = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(IngestionWatch)
+                    .where(IngestionWatch.status == "watching")
+                )
+                or 0
+            )
 
         error_counts = {str(code): int(count) for code, count in error_rows}
         return {
@@ -861,6 +919,25 @@ class Repositories:
                 if document_fetches_total
                 else None
             ),
+            "knowledge_tool_calls": int(knowledge_tool_calls),
+            "knowledge_tool_failed": int(knowledge_tool_failed),
+            "knowledge_tool_failure_rate": (
+                round(knowledge_tool_failed / knowledge_tool_calls, 4)
+                if knowledge_tool_calls
+                else None
+            ),
+            "knowledge_tool_timeout": int(knowledge_tool_timeout),
+            "knowledge_tool_timeout_rate": (
+                round(knowledge_tool_timeout / knowledge_tool_calls, 4)
+                if knowledge_tool_calls
+                else None
+            ),
+            "knowledge_tool_avg_ms": (
+                int(sum(knowledge_durations) / len(knowledge_durations))
+                if knowledge_durations
+                else None
+            ),
+            "ingestion_watch_backlog": int(ingestion_watch_backlog),
             "error_codes": dict(
                 sorted(error_counts.items(), key=lambda item: (-item[1], item[0]))
             ),
