@@ -26,6 +26,27 @@
 失败路径：任何阶段失败都会写入 `error_code`/`error_category`，运行状态置为 `failed`，
 API 返回安全错误结构与 `run_id`。
 
+## 知识库联动（v2）
+
+| 模块 | 职责 | 不承担 |
+|---|---|---|
+| `tools/knowledge/client.py` | 调用 RAG 的入库、任务查询、来源与检索接口；超时、有限重试与错误映射 | 抓取网页、写入 RAG 数据库 |
+| `tools/knowledge/tool.py` | 四个工具的 Schema、参数校验、结果压缩与来源登记 | 生成回答、持久化通知 |
+| `application/ingestion_watcher.py` | watch 登记、退避轮询、终态通知、旧 watch 清理 | 调用 LLM、修改知识库 |
+| `persistence/*` | `ingestion_watches`、消息 `kind`、来源 `provider` | 判断业务成败 |
+
+数据流：
+
+1. **入库**：用户消息 → 模型调用 `ingest_urls` → RAG 创建 job → 登记 watch →
+   返回 `job_id`。链接不落 Agent 侧正文库。
+2. **通知**：watcher 轮询 job → 终态写入 `kind=ingestion_notice` 的 assistant 消息 →
+   标记 `notified_at`。通知不进入模型上下文。
+3. **检索**：模型调用 `search_knowledge` → RAG 返回证据片段 → 相似度门槛 →
+   登记 `provider=knowledge_base` 的来源 → 引用校验 → 持久化回答。
+
+边界：RAG 是可选外部依赖，通过 HTTP 契约集成；两套数据库不做分布式事务，
+入库用幂等键、通知用唯一 `job_id` 保证重复安全。
+
 ## 关键设计决策
 
 见 `docs/adr/`：模型接口（0001）、HTML 提取（0002）、持久化与迁移（0003）、评估策略（0004）。

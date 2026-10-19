@@ -18,7 +18,7 @@ Docker Compose · pytest / ruff / GitHub Actions
 | 运行形态 | 单用户、单进程、模块化单体；默认仅监听 `127.0.0.1` |
 | 数据存储 | SQLite（对话、消息、运行、工具调用、文档快照、来源关联） |
 | 当前版本 | 2.0.0（v2 知识库接入，含异步运行、异步数据访问、成本估算与快照去重） |
-| 质量证据 | 204 个离线测试 + 12 个真实模型测试；12 个固定评估案例；CI 覆盖格式、Lint 与离线测试 |
+| 质量证据 | 211 个离线测试 + 12 个真实模型测试；12 个固定评估案例；CI 覆盖格式、Lint 与离线测试 |
 
 ## 架构
 
@@ -158,22 +158,25 @@ API 返回安全的错误结构与 `run_id`，不会把失败包装成成功回�
 
 ### 知识库工具（v2）
 
-v2 新增三个薄工具，把 Learning Agent 与 RAG 知识库连接起来：
+v2 新增四个工具，把 Learning Agent 与 RAG 知识库连接起来：
 
 | 工具 | 作用 |
 | --- | --- |
 | `ingest_urls` | 把“记住/收藏/入库”的链接提交到 RAG，立即返回 `job_id` |
 | `get_ingestion` | 查询异步入库任务进度与失败原因 |
 | `list_sources` | 查看知识库最近收录的来源 |
+| `search_knowledge` | 在已入库内容中检索证据片段，供带引用的回答使用 |
 
 `ingest_urls` 支持 `force_refresh=true`，用于重新抓取已入库链接并更新内容。
+RAG 请求对 GET 与检索做有限重试，入库仅在带幂等键时重试
+（`KNOWLEDGE_BASE_MAX_RETRIES`，默认 2 次）。
 
 意图区分：
 
 - “读一下/解释/总结” → `fetch_document`，只读不写。
 - “记住/收藏/存进知识库” → `ingest_urls`，不先抓取，避免同一页面重复入库。
 
-M2 只负责“已开始入库”的即时反馈；完成/异常主动通知在 M3 通过 watcher 接入。
+工具层只负责“已开始入库”的即时反馈；完成/异常主动通知由后台 watcher 接入。
 配置见 `.env.example` 的 `KNOWLEDGE_BASE_*`；RAG 与 Agent 同机运行时建议 RAG 使用
 `8001`、Agent 使用 `8000`。
 
@@ -183,10 +186,13 @@ M2 只负责“已开始入库”的即时反馈；完成/异常主动通知在 
 - 后台 watcher 轮询 RAG job；未完成时按 3 / 6 / 12 秒退避。
 - 终态写一条 `assistant` 消息（`kind=ingestion_notice`、`run_id=NULL`），
   不额外调用 LLM，因此不产生模型费用。
+- 通知消息不进入下一次运行的模型上下文，只在界面展示。
 - 成功、部分失败、全部失败、任务不存在、服务不可达分别有固定文案；
   失败消息带 URL 与 `error_code`。
 - 页面可见时每 5 秒刷新当前对话消息；Agent 重启后继续处理已持久化的 watch。
 - 启动迁移会为 v1 旧库补 `ingestion_watches` 与 `messages.kind`。
+- 已通知/失败的 watch 默认保留 30 天，之后由后台清理
+  （`INGESTION_WATCH_RETENTION_DAYS`）。
 
 ### 知识库检索与引用（v2）
 
@@ -236,7 +242,7 @@ M2 只负责“已开始入库”的即时反馈；完成/异常主动通知在 
 
 | 检查 | 内容 | 结果 |
 | --- | --- | --- |
-| 单元 / 集成 / E2E | 204 个离线测试：URL 策略、工具注册、上下文预算、引用校验、并发、重启恢复、迁移、备份恢复、注入防护、知识库接入等 | 2026-10-19：204 passed |
+| 单元 / 集成 / E2E | 211 个离线测试：URL 策略、工具注册、上下文预算、引用校验、并发、重启恢复、迁移、备份恢复、注入防护、知识库接入等 | 2026-10-19：211 passed |
 | 真实模型测试 | 12 个真实 API + 真实文档链路测试 | 2026-10-13：12 passed（产生外部请求与费用） |
 | 静态检查 | `ruff format --check` + `ruff check` | 通过 |
 | CI | GitHub Actions：格式、Lint、离线测试 | `.github/workflows/ci.yml` |
@@ -325,6 +331,9 @@ docker compose down
 ```
 
 - 端口仅绑定 `127.0.0.1`，数据落在 `./data` 卷；密钥从 `.env` 注入，不写入镜像。
+- 容器内 `127.0.0.1` 指向容器自身；Compose 默认用
+  `http://host.docker.internal:8001` 访问宿主机 RAG（已配置 `host-gateway`）。
+  若 RAG 也在 Compose 网络中，把 `KNOWLEDGE_BASE_URL` 改成对应服务名即可。
 - 国内网络可指定镜像站：
   `docker compose build --build-arg PYTHON_IMAGE=docker.m.daocloud.io/library/python:3.12-slim`。
 
@@ -337,6 +346,9 @@ uv run python -m scripts.restore_database --backup backups/app.db --target data/
 ```
 
 恢复后把 `DATABASE_URL` 指向恢复文件并重启应用。备份脚本会做完整性校验并输出各表行数。
+
+知识库数据（RAG 的 SQLite 与 Chroma）需要按其项目文档单独备份；建议先备份 RAG，
+再备份 Agent，恢复时按相反顺序执行并做一次检索冒烟。
 
 ### 常见问题
 

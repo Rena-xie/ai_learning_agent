@@ -113,3 +113,26 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 补充用例：`test_context_builder.py`、`test_citation_validator.py`、`test_model_failures.py`、
 `test_run_stats.py`、`test_conversations_api.py`、`test_runtime_limits.py`。
 上述测试已随离线测试套件执行（174 passed）。
+
+## v2 知识库联动（2026-10-19）
+
+**状态：M1–M4 已完成；M5 发布收口进行中。**
+
+| 项目 | 命令 / 来源 | 结果 |
+|---|---|---|
+| 离线测试 | `uv run pytest -m "not real_model"` | 211 passed，12 deselected |
+| 静态检查 | `uv run ruff format --check .` / `uv run ruff check .` | 通过 |
+| 真实单链接联调 | README 既有记录 | 已通过（本次未复跑） |
+| RAG 侧评测 | README 既有记录 | 108 题：Recall@5 0.8387、引用有效率 1.0、无答案识别率 1.0 |
+| 完整链路（入库 → 通知 → 检索 → 引用） | — | 待执行 |
+| Docker 双服务 | — | 待执行 |
+
+本轮 M5 代码收口新增：
+
+- 入库通知消息不再进入模型上下文（`tests/integration/test_history_filtering.py`）。
+- 知识库 GET / 检索请求有限重试；入库仅在带幂等键时重试。
+- 已通知 / 失败的 watch 默认保留 30 天后清理。
+- 版本号 2.0.0 全口径对齐。
+- Compose 通过 `host.docker.internal` 访问宿主机 RAG，兼容 Linux `host-gateway`。
+
+**未执行**：12 个真实模型测试、完整 Agent→RAG 链路、容器构建与两套数据备份恢复演练。
