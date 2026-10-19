@@ -157,6 +157,11 @@ class AsyncRepositories:
             self._inner.list_due_ingestion_watches, now=now, limit=limit
         )
 
+    async def delete_finished_ingestion_watches(self, *, before: datetime) -> int:
+        return await self._call(
+            self._inner.delete_finished_ingestion_watches, before=before
+        )
+
     async def save_ingestion_watch(
         self,
         *,

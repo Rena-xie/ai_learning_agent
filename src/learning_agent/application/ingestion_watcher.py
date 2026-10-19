@@ -36,6 +36,7 @@ class IngestionWatcher:
         max_backoff_s: float = 15.0,
         timeout_s: float = 1800.0,
         batch_size: int = 20,
+        retention_days: int = 30,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._knowledge_client = knowledge_client
@@ -45,6 +46,8 @@ class IngestionWatcher:
         self._max_backoff_s = max_backoff_s
         self._timeout_s = timeout_s
         self._batch_size = batch_size
+        self._retention_days = max(1, retention_days)
+        self._next_cleanup_at: datetime | None = None
         self._now = now or (lambda: datetime.now(UTC))
         self._task: asyncio.Task[None] | None = None
         self._stop: asyncio.Event | None = None
@@ -103,7 +106,28 @@ class IngestionWatcher:
                     "ingestion_watch_check_failed",
                     extra={"extra_fields": {"job_id": watch.job_id}},
                 )
+        await self._maybe_cleanup(now)
         return len(watches)
+
+    async def _maybe_cleanup(self, now: datetime) -> None:
+        """每小时清理一次已终结的旧 watch，控制表增长。"""
+
+        if self._next_cleanup_at is not None and now < self._next_cleanup_at:
+            return
+        self._next_cleanup_at = now + timedelta(hours=1)
+        cutoff = now - timedelta(days=self._retention_days)
+        try:
+            deleted = await self._repositories.delete_finished_ingestion_watches(
+                before=cutoff
+            )
+        except Exception:  # noqa: BLE001 - 清理失败不应影响通知轮询
+            logger.exception("ingestion_watch_cleanup_failed")
+            return
+        if deleted:
+            logger.info(
+                "ingestion_watches_cleaned",
+                extra={"extra_fields": {"count": deleted}},
+            )
 
     async def _run(self, stop: asyncio.Event) -> None:
         while not stop.is_set():

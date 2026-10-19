@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from typing import Protocol
 from urllib.parse import quote
@@ -17,6 +18,7 @@ _RAG_ERROR_CODES: dict[str, ErrorCode] = {
     "JOB_NOT_RETRYABLE": ErrorCode.KNOWLEDGE_BASE_REJECTED,
     "INGESTION_QUEUE_FULL": ErrorCode.KNOWLEDGE_BASE_BUSY,
 }
+_RETRYABLE_STATUS = frozenset({502, 503, 504})
 
 
 class KnowledgeBasePort(Protocol):
@@ -49,8 +51,12 @@ class KnowledgeBaseClient:
         base_url: str,
         connect_timeout_seconds: float,
         read_timeout_seconds: float,
+        max_retries: int = 2,
+        retry_delay_seconds: float = 0.2,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        self._max_retries = max(0, max_retries)
+        self._retry_delay_seconds = max(0.0, retry_delay_seconds)
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             timeout=httpx.Timeout(
@@ -111,35 +117,66 @@ class KnowledgeBaseClient:
         params: dict[str, object] | None = None,
         headers: dict[str, str] | None = None,
     ) -> dict[str, object]:
-        try:
-            response = await self._client.request(
-                method,
-                path,
-                json=json,
-                params=params,
-                headers=headers,
-            )
-        except httpx.TimeoutException as exc:
-            raise AppError(
-                ErrorCode.KNOWLEDGE_BASE_TIMEOUT, "知识库服务响应超时"
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise AppError(
-                ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE, "无法连接知识库服务"
-            ) from exc
+        attempts = self._max_retries + 1 if _is_retryable(method, path, headers) else 1
+        for attempt in range(attempts):
+            try:
+                response = await self._client.request(
+                    method,
+                    path,
+                    json=json,
+                    params=params,
+                    headers=headers,
+                )
+            except httpx.TimeoutException as exc:
+                if self._can_retry(attempt, attempts):
+                    await self._sleep_before_retry(attempt)
+                    continue
+                raise AppError(
+                    ErrorCode.KNOWLEDGE_BASE_TIMEOUT, "知识库服务响应超时"
+                ) from exc
+            except httpx.HTTPError as exc:
+                if self._can_retry(attempt, attempts):
+                    await self._sleep_before_retry(attempt)
+                    continue
+                raise AppError(
+                    ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE, "无法连接知识库服务"
+                ) from exc
 
-        if response.status_code >= 400:
-            _raise_for_response(response)
+            if response.status_code in _RETRYABLE_STATUS and self._can_retry(
+                attempt, attempts
+            ):
+                await self._sleep_before_retry(attempt)
+                continue
+            if response.status_code >= 400:
+                _raise_for_response(response)
 
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise AppError(
-                ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE, "知识库返回了无效响应"
-            ) from exc
-        if not isinstance(payload, dict):
-            raise AppError(ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE, "知识库返回了无效响应")
-        return payload
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise AppError(
+                    ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE, "知识库返回了无效响应"
+                ) from exc
+            if not isinstance(payload, dict):
+                raise AppError(
+                    ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE, "知识库返回了无效响应"
+                )
+            return payload
+        raise AssertionError("unreachable")
+
+    @staticmethod
+    def _can_retry(attempt: int, attempts: int) -> bool:
+        return attempt + 1 < attempts
+
+    async def _sleep_before_retry(self, attempt: int) -> None:
+        await asyncio.sleep(self._retry_delay_seconds * (2**attempt))
+
+
+def _is_retryable(method: str, path: str, headers: dict[str, str] | None) -> bool:
+    """GET 与检索可安全重试；入库仅在带幂等键时重试。"""
+
+    if method == "GET" or path == "/api/v1/search":
+        return True
+    return bool(headers and headers.get("Idempotency-Key"))
 
 
 def _raise_for_response(response: httpx.Response) -> None:

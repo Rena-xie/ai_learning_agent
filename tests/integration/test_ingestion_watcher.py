@@ -6,12 +6,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select, update
 
 from learning_agent.application.ingestion_watcher import IngestionWatcher
 from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.persistence.async_repositories import AsyncRepositories
 from learning_agent.persistence.database import build_engine, build_session_factory
 from learning_agent.persistence.migrations import apply_migrations
+from learning_agent.persistence.models import IngestionWatch
 from learning_agent.persistence.repositories import Repositories
 
 
@@ -228,3 +230,42 @@ async def test_persisted_watch_is_resumed_by_new_watcher(repo_env) -> None:
     ]
     assert len(notices) == 1
     assert "已完成入库" in notices[0].content
+
+
+async def test_finished_watches_are_cleaned_up_after_retention(repo_env) -> None:
+    sync, repositories = repo_env
+    conversation = sync.create_conversation(title="清理旧 watch")
+    base = datetime.now(UTC)
+
+    for job_id, content in (
+        ("job_old", "旧通知"),
+        ("job_new", "新通知"),
+    ):
+        sync.create_ingestion_watch(
+            job_id=job_id,
+            conversation_id=conversation.id,
+            next_check_at=base,
+        )
+        sync.notify_ingestion_watch(job_id=job_id, content=content, notified_at=base)
+
+    with sync._session() as session:
+        session.execute(
+            update(IngestionWatch)
+            .where(IngestionWatch.job_id == "job_old")
+            .values(created_at=base - timedelta(days=40))
+        )
+        session.commit()
+
+    current = [base]
+    watcher = IngestionWatcher(
+        knowledge_client=FakeKnowledgeClient([]),
+        repositories=repositories,
+        retention_days=30,
+        now=lambda: current[0],
+    )
+
+    assert await watcher.poll_once() == 0
+
+    with sync._session() as session:
+        remaining = {row.job_id for row in session.scalars(select(IngestionWatch))}
+    assert remaining == {"job_new"}

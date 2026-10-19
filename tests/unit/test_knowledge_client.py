@@ -14,11 +14,15 @@ from learning_agent.tools.knowledge.client import KnowledgeBaseClient
 
 def build_client(
     handler: Callable[[httpx.Request], httpx.Response],
+    *,
+    max_retries: int = 2,
 ) -> KnowledgeBaseClient:
     return KnowledgeBaseClient(
         base_url="http://kb.test",
         connect_timeout_seconds=1,
         read_timeout_seconds=1,
+        max_retries=max_retries,
+        retry_delay_seconds=0,
         transport=httpx.MockTransport(handler),
     )
 
@@ -143,3 +147,128 @@ async def test_connection_error_is_mapped() -> None:
         await client.aclose()
 
     assert exc_info.value.code is ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE
+
+
+async def test_get_ingestion_retries_transient_status() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            return httpx.Response(503, json={"error": {"code": "INTERNAL_ERROR"}})
+        return httpx.Response(
+            200,
+            json={
+                "job_id": "job_1",
+                "status": "completed",
+                "total": 1,
+                "succeeded": 1,
+                "failed": 0,
+                "skipped": 0,
+                "items": [],
+            },
+        )
+
+    client = build_client(handler)
+    try:
+        result = await client.get_ingestion("job_1")
+    finally:
+        await client.aclose()
+
+    assert result["status"] == "completed"
+    assert calls == 3
+
+
+async def test_get_ingestion_does_not_retry_client_error() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            404, json={"error": {"code": "JOB_NOT_FOUND", "message": "任务不存在"}}
+        )
+
+    client = build_client(handler)
+    try:
+        with pytest.raises(AppError) as exc_info:
+            await client.get_ingestion("job_missing")
+    finally:
+        await client.aclose()
+
+    assert exc_info.value.code is ErrorCode.INGESTION_NOT_FOUND
+    assert calls == 1
+
+
+async def test_ingestion_without_idempotency_key_is_not_retried() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(503, json={"error": {"code": "INTERNAL_ERROR"}})
+
+    client = build_client(handler)
+    try:
+        with pytest.raises(AppError) as exc_info:
+            await client.create_ingestion(["https://example.com/a"])
+    finally:
+        await client.aclose()
+
+    assert exc_info.value.code is ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE
+    assert calls == 1
+
+
+async def test_ingestion_with_idempotency_key_retries() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(503, json={"error": {"code": "INTERNAL_ERROR"}})
+        return httpx.Response(
+            202,
+            json={
+                "job_id": "job_1",
+                "status": "queued",
+                "total": 1,
+                "accepted": 1,
+                "skipped": [],
+                "created_at": "2026-10-19T00:00:00Z",
+            },
+        )
+
+    client = build_client(handler)
+    try:
+        result = await client.create_ingestion(
+            ["https://example.com/a"], idempotency_key="key-1"
+        )
+    finally:
+        await client.aclose()
+
+    assert result["job_id"] == "job_1"
+    assert calls == 2
+
+
+async def test_search_retries_timeout() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise httpx.ReadTimeout("timeout", request=request)
+        return httpx.Response(
+            200, json={"question": "q", "evidences": [], "max_similarity": 0.0}
+        )
+
+    client = build_client(handler)
+    try:
+        result = await client.search("q")
+    finally:
+        await client.aclose()
+
+    assert result["max_similarity"] == 0.0
+    assert calls == 2

@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -283,6 +283,19 @@ class Repositories:
                 .limit(limit)
             ).all()
             return [_to_watch(row) for row in rows]
+
+    def delete_finished_ingestion_watches(self, *, before: datetime) -> int:
+        """清理已通知/失败的旧 watch，避免表无限增长。"""
+
+        with self._session() as session:
+            result = session.execute(
+                delete(IngestionWatch).where(
+                    IngestionWatch.status.in_(("notified", "failed")),
+                    IngestionWatch.created_at < before,
+                )
+            )
+            session.commit()
+            return int(result.rowcount or 0)
 
     def save_ingestion_watch(
         self,

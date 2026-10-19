@@ -102,6 +102,7 @@ def create_app(
                     resolved.knowledge_base_connect_timeout_seconds
                 ),
                 read_timeout_seconds=(resolved.knowledge_base_read_timeout_seconds),
+                max_retries=resolved.knowledge_base_max_retries,
             )
         ingestion_watcher = IngestionWatcher(
             knowledge_client=active_knowledge_client,
@@ -110,6 +111,7 @@ def create_app(
             max_backoff_s=resolved.ingestion_poll_max_interval_s,
             timeout_s=resolved.ingestion_watch_timeout_s,
             batch_size=resolved.ingestion_max_active_watches,
+            retention_days=resolved.ingestion_watch_retention_days,
         )
         tools.extend(
             [
