@@ -120,7 +120,7 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 
 | 项目 | 命令 / 来源 | 结果 |
 |---|---|---|
-| 离线测试 | `uv run pytest -m "not real_model"` | 214 passed，12 deselected |
+| 离线测试 | `uv run pytest -m "not real_model"` | 216 passed，12 deselected |
 | 静态检查 | `uv run ruff format --check .` / `uv run ruff check .` | 通过 |
 | 真实单链接联调 | README 既有记录 | 已通过（本次未复跑） |
 | RAG 侧评测 | README 既有记录 | 108 题：Recall@5 0.8387、引用有效率 1.0、无答案识别率 1.0 |
@@ -134,6 +134,10 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 - 已通知 / 失败的 watch 默认保留 30 天后清理。
 - `/health/ready` 返回 `knowledge_base` 状态（ok / unavailable / disabled），
   探活失败不改变整体 ready 判定。
+- 统计接口增加知识库工具调用、失败率、超时率、平均耗时与 watch 积压。
+- 补充知识库证据注入测试，确认证据只作为工具结果数据进入上下文。
+- `tests/integration/test_knowledge_flow.py` 覆盖离线全链路：入库 → watch 通知 →
+  检索 → 引用（脚本化模型 + 假 RAG）。
 - 版本号 2.0.0 全口径对齐。
 - Compose 通过 `host.docker.internal` 访问宿主机 RAG，兼容 Linux `host-gateway`。
 
