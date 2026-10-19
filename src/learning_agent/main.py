@@ -188,7 +188,7 @@ def create_app(
                 await active_knowledge_client.aclose()
             engine.dispose()
 
-    app = FastAPI(title="AI Learning Agent", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="AI Learning Agent", version="2.0.0", lifespan=lifespan)
     app.state.settings = resolved
     app.state.repositories = repositories
     app.state.async_repositories = async_repositories
