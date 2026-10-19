@@ -29,7 +29,22 @@ async def ready(request: Request) -> HealthResponse:
     except ConfigurationError:
         model_configured = False
     database_ok = repositories.ping()
+
+    knowledge_client = getattr(request.app.state, "knowledge_client", None)
+    knowledge_base: str | None = None
+    if knowledge_client is None:
+        knowledge_base = "disabled"
+    else:
+        probe = getattr(knowledge_client, "health", None)
+        if probe is None:
+            knowledge_base = "unknown"
+        else:
+            knowledge_base = "ok" if await probe() else "unavailable"
+
     status = "ok" if (database_ok and model_configured) else "degraded"
     return HealthResponse(
-        status=status, database_ok=database_ok, model_configured=model_configured
+        status=status,
+        database_ok=database_ok,
+        model_configured=model_configured,
+        knowledge_base=knowledge_base,
     )

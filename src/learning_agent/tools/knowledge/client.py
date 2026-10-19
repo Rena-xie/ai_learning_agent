@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Sequence
 from typing import Protocol
 from urllib.parse import quote
@@ -39,6 +40,8 @@ class KnowledgeBasePort(Protocol):
 
     async def list_sources(self, limit: int = 10) -> dict[str, object]: ...
 
+    async def health(self) -> bool: ...
+
     async def aclose(self) -> None: ...
 
 
@@ -57,6 +60,8 @@ class KnowledgeBaseClient:
     ) -> None:
         self._max_retries = max(0, max_retries)
         self._retry_delay_seconds = max(0.0, retry_delay_seconds)
+        self._health_checked_at: float | None = None
+        self._health_ok = False
         self._client = httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             timeout=httpx.Timeout(
@@ -104,6 +109,21 @@ class KnowledgeBaseClient:
             "/api/v1/sources",
             params={"page": 1, "size": limit},
         )
+
+    async def health(self) -> bool:
+        """轻量探活；失败不影响 Agent 自身的就绪状态。"""
+
+        now = time.monotonic()
+        if self._health_checked_at is not None and now - self._health_checked_at < 30.0:
+            return self._health_ok
+        try:
+            response = await self._client.get("/health/live", timeout=2.0)
+            ok = response.status_code == 200
+        except httpx.HTTPError:
+            ok = False
+        self._health_checked_at = time.monotonic()
+        self._health_ok = ok
+        return ok
 
     async def aclose(self) -> None:
         await self._client.aclose()

@@ -198,7 +198,9 @@ def create_app(
     app.state.chat_service = chat_service
     app.state.engine = engine
     app.state.tool_registry = tool_registry
-    app.state.knowledge_client = active_knowledge_client
+    app.state.knowledge_client = (
+        active_knowledge_client if resolved.knowledge_base_enabled else None
+    )
     app.state.ingestion_watcher = ingestion_watcher
     register_exception_handlers(app)
     app.include_router(health.router)

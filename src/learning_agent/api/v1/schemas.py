@@ -99,6 +99,7 @@ class HealthResponse(BaseModel):
     status: str
     database_ok: bool | None = None
     model_configured: bool | None = None
+    knowledge_base: str | None = None
 
 
 class RunStatsResponse(BaseModel):
