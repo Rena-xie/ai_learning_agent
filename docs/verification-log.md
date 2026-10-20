@@ -114,17 +114,19 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 `test_run_stats.py`、`test_conversations_api.py`、`test_runtime_limits.py`。
 上述测试已随离线测试套件执行（174 passed）。
 
-## v2 知识库联动（2026-10-19）
+## v2 知识库联动（2026-10-19 ~ 2026-10-20）
 
-**状态：M1–M4 已完成；M5 发布收口进行中。**
+**状态：M1–M5 代码与离线验证完成；真实检索/引用与联合备份演练已通过。**
 
 | 项目 | 命令 / 来源 | 结果 |
 |---|---|---|
 | 离线测试 | `uv run pytest -m "not real_model"` | 216 passed，12 deselected |
 | 静态检查 | `uv run ruff format --check .` / `uv run ruff check .` | 通过 |
-| 真实单链接联调 | README 既有记录 | 已通过（本次未复跑） |
+| 真实 RAG + 真实模型（检索/引用） | 本地 5 篇语料 + 模型 API | 6 条证据，最高相似度 0.7347；回答含 6 个 `knowledge_base` 来源 |
+| 3 题知识库冒烟 | 本地 RAG + 模型 API | 3/3 返回 201、均含 `[S1]`、来源均为 `knowledge_base`；6 次工具调用 0 失败 |
 | RAG 侧评测 | README 既有记录 | 108 题：Recall@5 0.8387、引用有效率 1.0、无答案识别率 1.0 |
-| 完整链路（入库 → 通知 → 检索 → 引用） | — | 待执行 |
+| 离线全链路（入库 → 通知 → 检索 → 引用） | `tests/integration/test_knowledge_flow.py` | 通过（脚本化模型 + 假 RAG） |
+| 联合备份/恢复 | 2026-10-20 本机实测 | RAG 5 源/164 chunk 恢复一致，服务 ready 且检索 5 条；Agent 3 对话/8 消息/4 运行恢复一致 |
 | Docker 双服务 | — | 待执行 |
 
 本轮 M5 代码收口新增：
@@ -141,4 +143,5 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 - 版本号 2.0.0 全口径对齐。
 - Compose 通过 `host.docker.internal` 访问宿主机 RAG，兼容 Linux `host-gateway`。
 
-**未执行**：12 个真实模型测试、完整 Agent→RAG 链路、容器构建与两套数据备份恢复演练。
+**未执行**：12 个真实模型测试（文档链路）、写入生产知识库的实时入库 → 通知链路
+（避免污染语料）、Docker 构建、正式知识库评估基线。

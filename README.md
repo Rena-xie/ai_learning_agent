@@ -244,6 +244,7 @@ RAG 请求对 GET 与检索做有限重试，入库仅在带幂等键时重试
 | --- | --- | --- |
 | 单元 / 集成 / E2E | 216 个离线测试：URL 策略、工具注册、上下文预算、引用校验、并发、重启恢复、迁移、备份恢复、注入防护、知识库接入等 | 2026-10-19：216 passed |
 | 真实模型测试 | 12 个真实 API + 真实文档链路测试 | 2026-10-13：12 passed（产生外部请求与费用） |
+| 知识库真实冒烟 | 5 篇语料 + 3 个知识库问题（真实 RAG + 真实模型） | 2026-10-20：通过，来源均为 `knowledge_base` |
 | 静态检查 | `ruff format --check` + `ruff check` | 通过 |
 | CI | GitHub Actions：格式、Lint、离线测试 | `.github/workflows/ci.yml` |
 | Agent 评估 | 12 个固定案例，规则化判定 + 基线回归 | 12/12（2026-10-13 基线） |
@@ -266,7 +267,8 @@ v1.0 已完成核心 Agent 链路，并提前落地了对话管理、安全加�
 
 - 现状：链接异步入库、完成/异常通知、检索引用与 `force_refresh` 已具备；
   RAG 侧 108 题真实评测达到 Recall@5 0.8387、引用有效率 1.0、无答案识别率 1.0。
-- 真实单链接 Agent→RAG 联调已通过；后续计划覆盖更多官方文档与文件类型、按主题组织知识库。
+- 真实 RAG 检索/引用联调已通过（5 篇语料、3 题冒烟），来源均标记 `knowledge_base`；
+  入库→通知链路由离线全链路测试覆盖。后续计划覆盖更多官方文档与文件类型、按主题组织知识库。
 
 ### v3 安全与故障恢复
 
@@ -364,7 +366,8 @@ uv run python -m scripts.restore_database --backup backups/app.db --target data/
   [ADR 0002 正文提取](docs/adr/0002-html-extraction.md) ·
   [ADR 0003 持久化与迁移](docs/adr/0003-persistence-and-migrations.md) ·
   [ADR 0004 评估策略](docs/adr/0004-agent-evaluation.md) ·
-  [ADR 0005 异步运行](docs/adr/0005-async-run-execution.md)
+  [ADR 0005 异步运行](docs/adr/0005-async-run-execution.md) ·
+  [ADR 0006 知识库集成](docs/adr/0006-knowledge-base-integration.md)
 - [Agent 评估标准](evals/criteria.md) · [评估案例](evals/cases/core.json) ·
   [基线结果](evals/results/baseline-20261013.json)
 
