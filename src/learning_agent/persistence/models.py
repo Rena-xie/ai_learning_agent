@@ -473,3 +473,146 @@ class LearningEvent(Base):
     evidence_text: Mapped[str] = mapped_column(Text, default="")
     confidence: Mapped[float] = mapped_column(Float, default=0.5)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class LearningNote(Base):
+    """从 Digest 条目生成的学习笔记；当前单条资讯只生成一篇笔记。"""
+
+    __tablename__ = "learning_notes"
+    __table_args__ = (
+        UniqueConstraint("push_item_id", name="uq_learning_notes_push_item"),
+        Index("ix_learning_notes_topic_created", "topic_name", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    push_item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("push_items.id", ondelete="CASCADE"), nullable=False
+    )
+    topic_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("learning_topics.id", ondelete="SET NULL"), nullable=True
+    )
+    digest_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    topic_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime, default=utcnow, onupdate=utcnow
+    )
+
+
+class LearningNoteSource(Base):
+    """笔记中的可追溯来源，供测验和闪卡复用。"""
+
+    __tablename__ = "learning_note_sources"
+    __table_args__ = (
+        UniqueConstraint("note_id", "label", name="uq_learning_note_source_label"),
+        UniqueConstraint("note_id", "url", name="uq_learning_note_source_url"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    note_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("learning_notes.id", ondelete="CASCADE"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    publisher: Mapped[str] = mapped_column(String(160), nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), default="digest")
+    excerpt: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class LearningQuiz(Base):
+    """一篇笔记对应一套可重复查看的自测题。"""
+
+    __tablename__ = "learning_quizzes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    note_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("learning_notes.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class LearningQuizQuestion(Base):
+    """自测题答案与来源关联。"""
+
+    __tablename__ = "learning_quiz_questions"
+    __table_args__ = (
+        UniqueConstraint("quiz_id", "position", name="uq_learning_quiz_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    quiz_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("learning_quizzes.id", ondelete="CASCADE"), nullable=False
+    )
+    source_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("learning_note_sources.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, default="")
+
+
+class LearningFlashcard(Base):
+    """带简单间隔复习状态的学习闪卡。"""
+
+    __tablename__ = "learning_flashcards"
+    __table_args__ = (
+        UniqueConstraint("note_id", "card_key", name="uq_learning_flashcard_key"),
+        Index("ix_learning_flashcards_due", "next_review_at"),
+        Index("ix_learning_flashcards_note", "note_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    note_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("learning_notes.id", ondelete="CASCADE"), nullable=False
+    )
+    source_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("learning_note_sources.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    card_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    interval_days: Mapped[int] = mapped_column(Integer, default=1)
+    review_count: Mapped[int] = mapped_column(Integer, default=0)
+    lapse_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime, nullable=True
+    )
+    next_review_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime, default=utcnow, onupdate=utcnow
+    )
+
+
+class LearningReview(Base):
+    """闪卡复习历史，用于恢复复习进度和薄弱主题。"""
+
+    __tablename__ = "learning_reviews"
+    __table_args__ = (
+        Index("ix_learning_reviews_card_time", "flashcard_id", "reviewed_at"),
+        Index("ix_learning_reviews_time", "reviewed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    flashcard_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("learning_flashcards.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rating: Mapped[str] = mapped_column(String(16), nullable=False)
+    previous_interval_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    new_interval_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    next_review_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)

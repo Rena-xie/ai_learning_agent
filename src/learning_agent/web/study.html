@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 学习工作台</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/study.css" />
+  </head>
+  <body class="study-page">
+    <header class="study-topbar">
+      <div>
+        <a class="nav-link" href="/">← 返回对话</a>
+        <h1>学习工作台</h1>
+      </div>
+      <button id="refresh-study" type="button" class="primary">刷新</button>
+    </header>
+
+    <main class="study-main">
+      <section class="study-stats" id="progress-stats" aria-label="学习进度">
+        <article class="stat-card"><strong>0</strong><span>笔记</span></article>
+        <article class="stat-card"><strong>0</strong><span>自测</span></article>
+        <article class="stat-card"><strong>0</strong><span>闪卡</span></article>
+        <article class="stat-card"><strong>0</strong><span>待复习</span></article>
+      </section>
+
+      <section class="study-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>今日资讯</h2>
+            <p class="panel-hint">选择一条资讯，生成带来源引用的学习笔记。</p>
+          </div>
+        </div>
+        <p id="digest-status" class="empty-hint">正在加载今日 Digest…</p>
+        <div id="digest-items" class="item-list"></div>
+      </section>
+
+      <div class="study-columns">
+        <section class="study-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>学习笔记</h2>
+              <p class="panel-hint">笔记会保留原始标题、发布者和链接。</p>
+            </div>
+          </div>
+          <p id="notes-empty" class="empty-hint">还没有学习笔记。</p>
+          <div id="note-list" class="item-list"></div>
+        </section>
+
+        <section class="study-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 id="note-detail-title">选择一篇笔记</h2>
+              <p id="note-detail-topic" class="panel-hint"></p>
+            </div>
+          </div>
+          <pre id="note-content" class="note-content" hidden></pre>
+          <div id="note-sources" class="source-list"></div>
+          <div class="study-actions">
+            <button id="generate-quiz" type="button" disabled>生成自测题</button>
+            <button id="generate-cards" type="button" disabled>生成闪卡</button>
+          </div>
+          <div id="quiz-output" class="study-output"></div>
+        </section>
+      </div>
+
+      <section class="study-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>今日复习</h2>
+            <p class="panel-hint">根据回忆难度选择结果，系统会安排下一次复习。</p>
+          </div>
+          <span id="due-count" class="badge">0 张</span>
+        </div>
+        <p id="reviews-empty" class="empty-hint">当前没有到期闪卡。</p>
+        <div id="due-reviews" class="review-list"></div>
+      </section>
+    </main>
+
+    <div id="study-status" class="study-status" role="status" hidden></div>
+    <script src="/study.js"></script>
+  </body>
+</html>

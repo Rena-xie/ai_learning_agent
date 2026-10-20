@@ -19,6 +19,12 @@ EXPECTED_TABLES = {
     "document_snapshots",
     "run_sources",
     "ingestion_watches",
+    "learning_notes",
+    "learning_note_sources",
+    "learning_quizzes",
+    "learning_quiz_questions",
+    "learning_flashcards",
+    "learning_reviews",
     "alembic_version",
 }
 

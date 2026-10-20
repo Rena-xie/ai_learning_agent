@@ -25,7 +25,7 @@ logs/
 # 运行生成物
 .uv-cache/
 .python/
-.pytest-tmp/
+.pytest-tmp*/
 evals/results/last-run.json
 dist/
 build/

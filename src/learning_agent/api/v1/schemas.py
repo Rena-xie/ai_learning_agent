@@ -238,3 +238,117 @@ class LearningTopicUpdateRequest(BaseModel):
 
 class LearningConceptUpdateRequest(BaseModel):
     mastery: Literal["weak", "learning", "strong"]
+
+
+class LearningSourceResponse(BaseModel):
+    id: int
+    label: str
+    title: str
+    publisher: str
+    url: str
+    provider: str
+    excerpt: str
+
+
+class LearningNoteCreateRequest(BaseModel):
+    digest_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    item_id: int = Field(gt=0)
+
+
+class LearningNoteResponse(BaseModel):
+    id: int
+    push_item_id: int
+    topic_id: int | None = None
+    digest_date: str
+    topic_name: str
+    title: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
+    sources: list[LearningSourceResponse] = Field(default_factory=list)
+
+
+class LearningQuizCreateRequest(BaseModel):
+    note_id: int = Field(gt=0)
+    question_count: int = Field(default=4, ge=1, le=8)
+
+
+class LearningQuizQuestionResponse(BaseModel):
+    id: int
+    position: int
+    question: str
+    answer: str
+    explanation: str
+    source: LearningSourceResponse | None = None
+
+
+class LearningQuizResponse(BaseModel):
+    id: int
+    note_id: int
+    created_at: datetime
+    questions: list[LearningQuizQuestionResponse] = Field(default_factory=list)
+
+
+class LearningFlashcardCreateRequest(BaseModel):
+    note_id: int = Field(gt=0)
+    card_count: int = Field(default=4, ge=1, le=8)
+
+
+class LearningFlashcardResponse(BaseModel):
+    id: int
+    note_id: int
+    topic_name: str
+    question: str
+    answer: str
+    interval_days: int
+    review_count: int
+    lapse_count: int
+    last_reviewed_at: datetime | None = None
+    next_review_at: datetime
+    created_at: datetime
+    source: LearningSourceResponse | None = None
+
+
+class LearningDueReviewsResponse(BaseModel):
+    due_count: int
+    cards: list[LearningFlashcardResponse] = Field(default_factory=list)
+
+
+class LearningReviewRequest(BaseModel):
+    rating: Literal["again", "hard", "good", "easy"]
+
+
+class LearningProgressTopicResponse(BaseModel):
+    topic_name: str
+    notes: int
+    flashcards: int
+    due: int
+    reviews: int
+    correct: int
+    lapses: int
+    retention_rate: float | None = None
+    weak_concepts: list[str] = Field(default_factory=list)
+    needs_attention: bool = False
+
+
+class LearningProgressResponse(BaseModel):
+    notes_total: int
+    quizzes_total: int
+    flashcards_total: int
+    due_total: int
+    reviews_total: int
+    correct_reviews: int
+    retention_rate: float | None = None
+    topics: list[LearningProgressTopicResponse] = Field(default_factory=list)
+
+
+class LearningCollectionSearchRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=10_000)
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class LearningCollectionSearchResponse(BaseModel):
+    collection_id: str
+    question: str
+    top_k: int
+    evidences: list[dict[str, object]] = Field(default_factory=list)

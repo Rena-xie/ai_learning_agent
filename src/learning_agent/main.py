@@ -19,6 +19,7 @@ from learning_agent.api.v1.routes import (
     conversations,
     digests,
     health,
+    learning,
     learning_profile,
     messages,
     push_preferences,
@@ -31,6 +32,7 @@ from learning_agent.application.digest_scheduler import DigestScheduler
 from learning_agent.application.digest_service import DailyDigestService
 from learning_agent.application.ingestion_watcher import IngestionWatcher
 from learning_agent.application.learning_profile import LearningProfileService
+from learning_agent.application.learning_workspace import LearningWorkspaceService
 from learning_agent.application.run_scheduler import RunScheduler
 from learning_agent.config import Settings, get_settings
 from learning_agent.digest.feed import FeedFetcher
@@ -41,6 +43,7 @@ from learning_agent.models.provider_adapter import OpenAICompatibleModelClient
 from learning_agent.observability.logging import configure_logging, get_logger
 from learning_agent.persistence.async_repositories import AsyncRepositories
 from learning_agent.persistence.database import build_engine, build_session_factory
+from learning_agent.persistence.learning_store import LearningStore
 from learning_agent.persistence.migrations import apply_migrations
 from learning_agent.persistence.repositories import Repositories
 from learning_agent.persistence.v3_store import V3Store
@@ -92,6 +95,7 @@ def create_app(
     repositories = Repositories(session_factory)
     async_repositories = AsyncRepositories(repositories)
     v3_store = V3Store(session_factory)
+    learning_store = LearningStore(session_factory)
     if resolved.digest_enabled and resolved.digest_seed_default_sources:
         v3_store.seed_sources(DEFAULT_SOURCES)
     recovered_runs = repositories.fail_stale_runs()
@@ -212,6 +216,12 @@ def create_app(
     profile_service = LearningProfileService(
         store=v3_store, enabled=resolved.learning_profile_enabled
     )
+    learning_workspace_service = LearningWorkspaceService(
+        store=learning_store,
+        digest_store=v3_store,
+        profile_service=profile_service,
+        knowledge_client=active_knowledge_client,
+    )
     scheduler = RunScheduler()
     chat_service = ChatService(
         runtime=runtime,
@@ -261,6 +271,8 @@ def create_app(
     app.state.digest_service = digest_service
     app.state.digest_scheduler = digest_scheduler
     app.state.learning_profile_service = profile_service
+    app.state.learning_store = learning_store
+    app.state.learning_workspace_service = learning_workspace_service
     app.state.engine = engine
     app.state.tool_registry = tool_registry
     app.state.knowledge_client = (
@@ -276,6 +288,7 @@ def create_app(
     app.include_router(digests.router)
     app.include_router(push_sources.router)
     app.include_router(push_preferences.router)
+    app.include_router(learning.router)
     app.include_router(learning_profile.router)
     if _WEB_DIR.is_dir():
         # 静态界面挂在最后，保证 /api 与 /health 路由优先匹配
