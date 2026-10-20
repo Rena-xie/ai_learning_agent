@@ -79,19 +79,6 @@ tests/  evals/  migrations/  scripts/  docs/
 
 > API 文档：启动后访问 `/docs`；健康检查 `/health/live`、`/health/ready`。
 
-## 工程质量
-
-| 检查 | 结果 |
-| --- | --- |
-| 离线测试 | 220 passed（URL 策略、上下文、引用、并发、迁移、备份、注入、知识库全链路） |
-| 真实模型 | 12 passed（真实文档链路，2026-10-13） |
-| 知识库冒烟 | 3/3 通过（本地 5 篇语料，来源均为 `knowledge_base`；[结果](evals/results/knowledge-smoke-20261020.json)） |
-| 评估 | 12 个固定案例，支持基线回归 |
-| CI | ruff format / ruff check / 离线 pytest |
-
-限制：单用户本机、默认仅监听 `127.0.0.1`；未实现流式输出、文件上传、远程认证；
-跨主机部署需为 RAG 补鉴权。评估以规则检查为主，主观质量仍需人工抽查。
-
 ## 快速开始
 
 **环境**：Python 3.12 + uv；OpenAI 兼容模型 API；可选 RAG 服务（默认 `127.0.0.1:8001`）与 Docker。
@@ -132,20 +119,6 @@ curl http://127.0.0.1:8000/health/ready
 **备份**：`uv run python -m scripts.backup_database --output backups/app.db`；
 RAG 数据按其项目文档单独备份。
 
-## 迭代规划
-
-| 版本 | 主题 | 主要工作 |
-| --- | --- | --- |
-| v2.1 | 对话资产管理 | 重命名/搜索/归档/导出；运行取消、全局并发与费用预算 |
-| v3 | 安全与故障恢复 | 远程认证与 HTTPS、工具沙箱、速率限制、依赖审计 |
-| v4 | 可观测性与评估 | 指标导出/告警、更大评估集、版本对比与成本看板 |
-| v5 | 部署与交付 | 镜像发布、多环境、灰度回滚、SLO |
-
-## 文档
-
-- [架构说明](docs/architecture.md) · [威胁模型](docs/threat-model.md) ·
-  [验收记录](docs/verification-log.md)
-- 设计决策：[ADR 0001–0006](docs/adr/) · [评估标准](evals/criteria.md)
 
 ## 许可
 
