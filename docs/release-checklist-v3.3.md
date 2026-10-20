@@ -1,39 +1,42 @@
 # AI Learning Agent V3.3 发布检查清单
 
-> 版本：3.3.0
+> 版本：3.3.1
 > 更新日期：2026-10-20
-> 范围：V3 日用品与发布收口
+> 范围：V3.3.1 安全与发布质量修订
 
 ## 1. 发布范围
 
-V3.3 不新增核心业务链路，重点完成 V3 的日常可用性和发布收口：
+V3.3.1 不新增业务能力，重点解除安全否决项并恢复发布可信度：
 
-- Web 工作台补齐资讯偏好、Digest 反馈和收藏到 RAG。
-- Web 工作台展示来源健康状态，并支持来源启停和新增。
-- Web 工作台支持学习画像开关、主题状态、概念掌握度和清空操作。
-- 版本号统一为 `3.3.0`。
-- README、项目说明和发布检查清单同步当前实现。
+- RSS/Atom 文章链接只允许 HTTP(S)，历史非法条目不进入可见链路。
+- Web UI 响应增加 CSP、MIME 嗅探、Referrer 与点击劫持防护。
+- 来源添加、来源健康和 Digest 失败只暴露安全分类信息。
+- CI 覆盖锁文件、全仓格式、Lint、前端脚本与安全单测。
+- 版本号统一为 `3.3.1`。
+- 清理未接线的 `DIGEST_MAX_AGE_DAYS` 和公开 `auto_ingest` 字段，未实现能力标记为 V3.4。
 
 ## 2. 自动化检查
 
 发布前执行：
 
 ```powershell
-uv run pytest -q
+uv run pytest -m "not real_model" -q
 uv run ruff check src tests migrations
 uv run ruff format --check .
 uv lock --check
+node --check src/learning_agent/web/safe-url.js
 node --check src/learning_agent/web/app.js
 node --check src/learning_agent/web/study.js
+node --test tests/frontend/test_safe_url.js
 git diff --check
 ```
 
 验收标准：
 
-- 239 个全量离线测试通过；12 个真实模型测试单独按需执行。
+- 251 个离线测试通过；总数中的 12 个真实模型测试单独按需执行。
 - Ruff Lint 与格式检查通过。
 - 锁文件与 `pyproject.toml` 一致。
-- 两个前端脚本语法检查通过。
+- 前端脚本语法与安全 URL 单测通过。
 - Git diff 无空白错误和临时调试内容。
 
 ## 3. 本机功能冒烟
@@ -52,6 +55,8 @@ git diff --check
 - [ ] 到期闪卡可以提交复习结果，并更新下一次复习时间。
 - [ ] 学习画像可以开关、调整主题状态、校正概念掌握度、删除主题和清空。
 - [ ] 重启应用后，偏好、Digest、笔记、闪卡、复习记录和画像仍可读取。
+- [ ] 恶意或失陷 RSS 中的 `javascript:` 条目不会出现在工作台。
+- [ ] `/study.html` 响应包含限制性 CSP，浏览器控制台无 CSP 违规。
 
 ## 4. 数据库与回滚
 
@@ -66,4 +71,5 @@ git diff --check
 - RAG 仍是单总库，`default` collection 不带主题过滤。
 - 笔记、自测和闪卡由确定性规则生成，尚未调用模型改写。
 - 真实飞书、真实 RAG 入库和外部 RSS 的发布验收必须在用户环境中执行。
+- RSS 条件请求、robots.txt、全局紧急停止、发送前预览、反馈排序和批量模型摘要列为 V3.4。
 - V4 的记忆生命周期治理、上下文注入和 LangGraph/LangChain 迁移不在本版本范围。

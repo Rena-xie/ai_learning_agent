@@ -5,7 +5,7 @@
 
 **Python 3.12 · FastAPI · SQLAlchemy / SQLite · Alembic · OpenAI 兼容 API · Docker · pytest / ruff / GitHub Actions**
 
-单用户、本机运行、模块化单体（当前版本 v3.3.0）。知识库是可选外部依赖；
+单用户、本机运行、模块化单体（当前版本 v3.3.1）。知识库是可选外部依赖；
 RAG 不可用时文档阅读链路仍可正常工作。
 
 ## 项目亮点
@@ -18,10 +18,10 @@ RAG 不可用时文档阅读链路仍可正常工作。
 - **学习闭环**：Digest 一键生成带来源笔记，自动生成自测题和闪卡，按复习结果维护下次复习时间与薄弱主题。
 - **跨对话学习画像**：记录主题、薄弱概念及其证据，支持开关、主题状态调整、概念校正和清空。
 - **日常操作工作台**：网页内完成资讯偏好、来源健康与启停、Digest 反馈、RAG 收藏、自测和复习。
-- **安全边界**：域名白名单、SSRF / DNS rebinding 防护、逐跳重定向校验、体积/超时/轮数/工具次数上限、
-  日志脱敏。
+- **安全边界**：域名白名单、SSRF / DNS rebinding 防护、逐跳重定向校验、外部链接协议校验、
+  CSP 与安全响应头、体积/超时/轮数/工具次数上限、日志脱敏。
 - **可观测与可回归**：`run_id` 贯穿日志与运行记录；统计含 p50/p95、成本、知识库失败率与 watch 积压。
-- **工程质量**：239 个离线测试 + 12 个真实模型测试；CI 覆盖格式、Lint 与离线测试；
+- **工程质量**：离线测试 + 12 个真实模型测试；CI 覆盖锁文件、格式、Lint、前端安全检查与离线测试；
   真实知识库冒烟 3/3。
 
 ## 架构
@@ -94,10 +94,11 @@ tests/  evals/  migrations/  scripts/  docs/
 | 安全 | 输入/资源上限、幂等入库、注入防护、密钥与日志脱敏；RAG 不可用可降级 |
 | 可观测 | JSON 日志、`run_id`、成功率/耗时/Token/成本、知识库失败率与 watch 积压 |
 
-## V3.3 当前范围
+## V3.3.1 当前范围
 
 V3 系列已完成：
 
+- `v3.3.1` 安全修订：RSS/Atom 链接仅允许 HTTP(S)，历史非法条目隔离，Web UI 增加 CSP。
 - 默认来源注册表、RSS/Atom 抓取、去重、筛选、Top N 和启动触发。
 - 飞书自定义机器人 Webhook、投递重试、补发和投递状态记录。
 - 主题/来源/条数偏好，Digest 有用/无用反馈和按需收藏到 RAG。
@@ -110,6 +111,8 @@ V3 系列已完成：
 
 - RAG 仍是一个总库，Agent 侧仅提供 `default` collection 检索边界；真正的主题/collection 过滤需要 RAG 项目后续支持。
 - 笔记、自测题和闪卡当前采用基于 Digest 标题与摘要的确定性生成，后续可切换为模型生成。
+- Digest 当前使用 RSS/Atom 自带摘要；模型批量摘要、发送前预览、反馈排序、条件请求、
+  robots.txt 和全局紧急停止列为 V3.4。
 - 邮件、Telegram 和 V4 的长期记忆/上下文工程不属于 V3。
 
 > API 文档：启动后访问 `/docs`；健康检查 `/health/live`、`/health/ready`。
@@ -171,7 +174,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_daily_digest.ps1
 **备份**：`uv run python -m scripts.backup_database --output backups/app.db`；
 RAG 数据按其项目文档单独备份。
 
-V3.3 发布前的自动化与手工检查见
+V3.3.1 发布前的自动化与手工检查见
 [`docs/release-checklist-v3.3.md`](docs/release-checklist-v3.3.md)。
 
 ## 许可

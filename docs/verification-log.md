@@ -145,3 +145,31 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 
 **未执行**：12 个真实模型测试（文档链路）、写入生产知识库的实时入库 → 通知链路
 （避免污染语料）、Docker 构建、正式知识库评估基线。
+
+## v3.3.1 安全与发布质量修订（2026-10-20）
+
+**状态：自动化验证完成；真实外部集成待手工验收。**
+
+本轮用于关闭项目质量评价中的 K03：RSS/Atom 文章链接协议未校验导致的前端
+存储型链接注入风险。
+
+| 项目 | 命令 | 结果 |
+|---|---|---|
+| 离线测试 | `pytest -m "not real_model" -q --no-header -p no:cacheprovider` | 251 passed，12 deselected |
+| 格式检查 | `ruff format --check .` | 通过 |
+| 静态检查 | `ruff check src tests migrations` | 通过 |
+| 锁文件 | `uv lock --check` | 通过，61 packages |
+| 前端语法 | `node --check safe-url.js/app.js/study.js` | 通过 |
+| 前端安全单测 | `node --test tests/frontend/test_safe_url.js` | 2 passed |
+| Git 空白检查 | `git diff --check` | 通过 |
+
+新增安全回归：
+
+- `javascript:`、`data:`、`file:`、`vbscript:`、带凭据 URL、空白字符 URL 均被拒绝。
+- RSS 解析会跳过危险协议，只保留合法 HTTP(S) 文章。
+- 历史非法 `push_items` 启动时标记为 `quarantined`，Digest 查询默认排除。
+- FastAPI 响应包含限制性 CSP、`nosniff`、`no-referrer` 和点击劫持防护。
+- 来源添加、来源健康、Digest 失败和飞书投递失败不再返回底层异常或响应正文。
+
+**未执行**：真实 RSS、真实飞书、真实 RAG 入库、Docker 双服务与浏览器手工 CSP
+控制台检查。相关项目仍保留在 V3.3.1 发布清单中，不能标记为已通过。
