@@ -58,9 +58,7 @@ async def update_source(
     payload: PushSourceUpdateRequest,
     request: Request,
 ) -> PushSourceResponse:
-    record = _store(request).set_source_enabled(
-        source_id, enabled=payload.enabled
-    )
+    record = _store(request).set_source_enabled(source_id, enabled=payload.enabled)
     return _source_response(record)
 
 

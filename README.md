@@ -5,7 +5,7 @@
 
 **Python 3.12 · FastAPI · SQLAlchemy / SQLite · Alembic · OpenAI 兼容 API · Docker · pytest / ruff / GitHub Actions**
 
-单用户、本机运行、模块化单体（当前版本 v3.0.0）。知识库是可选外部依赖；
+单用户、本机运行、模块化单体（当前版本 v3.3.0）。知识库是可选外部依赖；
 RAG 不可用时文档阅读链路仍可正常工作。
 
 ## 项目亮点
@@ -15,11 +15,13 @@ RAG 不可用时文档阅读链路仍可正常工作。
   来源标记为 `knowledge_base`。
 - **每日 AI 资讯**：可信来源注册表、RSS/Atom 增量抓取、去重、筛选、Digest 生成和飞书推送；
   采用启动触发，不依赖固定钟点。
-- **跨对话学习画像**：记录主题、薄弱概念及其证据，目前提供只读画像 API；编辑和复习计划属于后续阶段。
+- **学习闭环**：Digest 一键生成带来源笔记，自动生成自测题和闪卡，按复习结果维护下次复习时间与薄弱主题。
+- **跨对话学习画像**：记录主题、薄弱概念及其证据，支持开关、主题状态调整、概念校正和清空。
+- **日常操作工作台**：网页内完成资讯偏好、来源健康与启停、Digest 反馈、RAG 收藏、自测和复习。
 - **安全边界**：域名白名单、SSRF / DNS rebinding 防护、逐跳重定向校验、体积/超时/轮数/工具次数上限、
   日志脱敏。
 - **可观测与可回归**：`run_id` 贯穿日志与运行记录；统计含 p50/p95、成本、知识库失败率与 watch 积压。
-- **工程质量**：232 个离线测试 + 12 个真实模型测试；CI 覆盖格式、Lint 与离线测试；
+- **工程质量**：239 个离线测试 + 12 个真实模型测试；CI 覆盖格式、Lint 与离线测试；
   真实知识库冒烟 3/3。
 
 ## 架构
@@ -40,6 +42,8 @@ flowchart LR
     DIGEST["DigestScheduler<br/>来源注册表 / RSS"] --> FEISHU["飞书 Webhook"]
     DIGEST --> DB[("SQLite")]
     PROFILE["LearningProfileService"] --> DB
+    STUDY["LearningWorkspace<br/>笔记 / 自测 / 闪卡 / 复习"] --> DB
+    UI --> STUDY
     WATCH --> DB
     SVC --> DB
     RT --> DB
@@ -62,7 +66,7 @@ src/learning_agent/
 ├── digest/         # RSS/Atom、来源默认值、飞书 Webhook
 ├── persistence/    # SQLite / SQLAlchemy / Repository / 迁移
 ├── observability/  # 结构化日志与脱敏
-├── web/            # 原生聊天界面
+├── web/            # 原生聊天界面与学习工作台
 └── main.py         # 应用装配
 tests/  evals/  migrations/  scripts/  docs/
 ```
@@ -73,7 +77,8 @@ tests/  evals/  migrations/  scripts/  docs/
 - **存知识库**：`ingest_urls` → RAG job → watcher 轮询 → `ingestion_notice` 通知（不调用 LLM）。
 - **查知识库**：`search_knowledge` → 证据片段 → 服务端登记来源 → 带引用的回答。
 - **每日资讯**：启动触发 → 来源注册表/RSS → 去重筛选 → Digest → 飞书推送。
-- **学习画像**：已完成对话 → 规则提取主题/概念/薄弱信号 → 证据表 → 只读 API。
+- **学习闭环**：Digest → 带引用笔记 → 自测/闪卡 → 复习记录 → 学习进度。
+- **学习画像**：已完成对话 → 规则提取主题/概念/薄弱信号 → 证据表 → 可校正画像。
 
 ## 核心能力
 
@@ -81,25 +86,31 @@ tests/  evals/  migrations/  scripts/  docs/
 | --- | --- |
 | 文档阅读 | 白名单 + SSRF/重定向校验；正文/章节提取；快照复用；截断标注 |
 | 知识库 | 异步入库、`force_refresh`、任务查询、来源列表、检索证据 |
-| 每日资讯 | 来源注册表、RSS/Atom、去重、筛选、Digest、飞书 Webhook、启动触发和幂等 |
-| 学习画像 | 跨对话主题、概念、薄弱信号、证据和置信度；当前支持只读查看 |
+| 每日资讯 | 来源注册表、RSS/Atom、去重、筛选、Digest、飞书 Webhook、启动触发、偏好、补发和反馈 |
+| 学习画像 | 跨对话主题、概念、薄弱信号、证据和置信度；支持用户校正与启停 |
+| 学习闭环 | 带来源笔记、自测题、闪卡、间隔复习、到期提醒、留存率和薄弱主题统计 |
 | 引用 | `S1…` 服务端分配与校验；来源分别标记 `fetch` / `knowledge_base` |
 | 对话与运行 | 多对话、历史加载、同步/异步（`?mode=async`）、单对话单活动运行、级联删除 |
 | 安全 | 输入/资源上限、幂等入库、注入防护、密钥与日志脱敏；RAG 不可用可降级 |
 | 可观测 | JSON 日志、`run_id`、成功率/耗时/Token/成本、知识库失败率与 watch 积压 |
 
-## V3.0 当前范围
+## V3.3 当前范围
 
-已完成的基础能力：
+V3 系列已完成：
 
-- 默认来源注册表与 `GET/POST /api/v1/push/sources`
-- RSS/Atom 抓取、按 canonical URL 去重、主题筛选和 Top N
-- 启动触发的 `DigestScheduler`
-- `POST /api/v1/digests/run`、`GET /api/v1/digests/today`
-- 飞书自定义机器人 Webhook（可选签名）
-- 跨对话学习画像基础表和 `GET /api/v1/learning-profile`
+- 默认来源注册表、RSS/Atom 抓取、去重、筛选、Top N 和启动触发。
+- 飞书自定义机器人 Webhook、投递重试、补发和投递状态记录。
+- 主题/来源/条数偏好，Digest 有用/无用反馈和按需收藏到 RAG。
+- 来源健康状态（最近检查、最近错误）以及来源启停。
+- 跨对话学习画像、证据记录、用户校正、开关和清空。
+- Digest 一键生成带来源笔记、自测题、闪卡、`next_review_at` 和学习进度。
+- `/study.html` 学习工作台，覆盖日常资讯控制、笔记、自测、复习和画像管理。
 
-尚未完成的后续能力：反馈/偏好、历史补发、画像编辑、自测题、闪卡和复习计划。
+当前已知边界：
+
+- RAG 仍是一个总库，Agent 侧仅提供 `default` collection 检索边界；真正的主题/collection 过滤需要 RAG 项目后续支持。
+- 笔记、自测题和闪卡当前采用基于 Digest 标题与摘要的确定性生成，后续可切换为模型生成。
+- 邮件、Telegram 和 V4 的长期记忆/上下文工程不属于 V3。
 
 > API 文档：启动后访问 `/docs`；健康检查 `/health/live`、`/health/ready`。
 
@@ -120,7 +131,9 @@ Copy-Item .env.example .env
 uv run uvicorn --factory learning_agent.main:create_app --host 127.0.0.1 --port 8000
 ```
 
-打开 <http://127.0.0.1:8000/>；`/health/ready` 返回数据库、模型与 `knowledge_base` 状态。
+打开 <http://127.0.0.1:8000/> 使用对话，打开
+<http://127.0.0.1:8000/study.html> 使用学习工作台；`/health/ready` 返回数据库、模型与
+`knowledge_base` 状态。
 知识库不可用时 Agent 仍可启动，文档阅读不受影响。
 
 **验证**
@@ -158,6 +171,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_daily_digest.ps1
 **备份**：`uv run python -m scripts.backup_database --output backups/app.db`；
 RAG 数据按其项目文档单独备份。
 
+V3.3 发布前的自动化与手工检查见
+[`docs/release-checklist-v3.3.md`](docs/release-checklist-v3.3.md)。
 
 ## 许可
 

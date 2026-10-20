@@ -7,6 +7,7 @@ from pathlib import Path
 from tests.conftest import build_test_settings
 from tests.support.web_app import running_client
 
+from learning_agent import __version__
 from learning_agent.main import create_app
 
 
@@ -55,3 +56,10 @@ async def test_ready_reports_knowledge_base_disabled(tmp_path: Path) -> None:
         body = (await client.get("/health/ready")).json()
 
     assert body["knowledge_base"] == "disabled"
+
+
+def test_app_version_matches_v33_release(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, knowledge_base_enabled=False))
+
+    assert __version__ == "3.3.0"
+    assert app.version == "3.3.0"
