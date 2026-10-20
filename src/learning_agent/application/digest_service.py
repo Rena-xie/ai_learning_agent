@@ -11,6 +11,7 @@ from learning_agent.config import Settings
 from learning_agent.digest.feed import FeedFetcher
 from learning_agent.digest.feishu import FeishuNotifier
 from learning_agent.digest.rss import FeedEntry, parse_feed
+from learning_agent.domain.errors import AppError
 from learning_agent.observability.logging import get_logger
 from learning_agent.persistence.v3_store import (
     DigestItemRecord,
@@ -136,7 +137,7 @@ class DailyDigestService:
                 "daily_digest_failed",
                 extra={"extra_fields": {"date": date}},
             )
-            self._store.fail_digest(digest.id, f"{type(exc).__name__}: {exc}")
+            self._store.fail_digest(digest.id, _safe_failure(exc))
             failed = self._store.get_digest(date)
             if failed is None:
                 raise
@@ -182,7 +183,7 @@ class DailyDigestService:
                     )
                     return source, xml, None
                 except Exception as exc:  # noqa: BLE001 - 单源失败隔离
-                    return source, None, f"{type(exc).__name__}: {exc}"
+                    return source, None, _safe_failure(exc)
 
         results = await asyncio.gather(*(fetch(source) for source in sources))
         candidates: list[_Candidate] = []
@@ -286,6 +287,12 @@ def _matches_digest_date(
     except Exception:
         local = value
     return local.date().isoformat() == digest_date
+
+
+def _safe_failure(exc: Exception) -> str:
+    if isinstance(exc, AppError):
+        return str(exc.code)
+    return type(exc).__name__
 
 
 def _summary(candidate: _Candidate) -> str:

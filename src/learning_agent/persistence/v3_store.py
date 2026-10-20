@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from learning_agent.domain.errors import AppError, ErrorCode
+from learning_agent.domain.urls import normalize_external_url
 from learning_agent.persistence.models import (
     LearningConcept,
     LearningEvent,
@@ -40,7 +41,6 @@ class SourceRecord:
     category: str
     trust_level: str
     auto_push: bool
-    auto_ingest: bool
     enabled: bool
     last_checked_at: datetime | None
     etag: str | None
@@ -195,6 +195,22 @@ class V3Store:
             source.enabled = enabled
             session.flush()
             return _to_source(source)
+
+    def quarantine_invalid_push_items(self) -> int:
+        """将历史非法文章 URL 隔离，避免继续出现在 Digest 或 RAG 操作中。"""
+
+        with self._session() as session:
+            rows = session.scalars(
+                select(PushItem).where(PushItem.status != "quarantined")
+            ).all()
+            count = 0
+            for row in rows:
+                try:
+                    normalize_external_url(row.canonical_url)
+                except ValueError:
+                    row.status = "quarantined"
+                    count += 1
+            return count
 
     def mark_source_checked(
         self,
@@ -356,6 +372,7 @@ class V3Store:
         published_at: datetime | None,
         content_hash: str,
     ) -> tuple[int, bool]:
+        url = normalize_external_url(url)
         with self._session() as session:
             existing = session.scalar(
                 select(PushItem).where(PushItem.canonical_url == url)
@@ -398,7 +415,10 @@ class V3Store:
                     PushItemIngestion,
                     PushItemIngestion.item_id == PushItem.id,
                 )
-                .where(PushDigestItem.digest_id == digest_id)
+                .where(
+                    PushDigestItem.digest_id == digest_id,
+                    PushItem.status != "quarantined",
+                )
                 .order_by(PushDigestItem.rank)
             ).all()
             return [
@@ -434,6 +454,7 @@ class V3Store:
                 .where(
                     PushDigestItem.digest_id == digest.id,
                     PushDigestItem.item_id == item_id,
+                    PushItem.status != "quarantined",
                 )
             ).first()
             if row is None:
@@ -690,7 +711,6 @@ def _to_source(row: PushSource) -> SourceRecord:
         category=row.category,
         trust_level=row.trust_level,
         auto_push=bool(row.auto_push),
-        auto_ingest=bool(row.auto_ingest),
         enabled=bool(row.enabled),
         last_checked_at=row.last_checked_at,
         etag=row.etag,

@@ -77,12 +77,16 @@ function renderInline(text, sourcesById) {
       // [S1]：来源编号由服务端校验，这里链接到服务端提供的真实来源地址
       const sourceId = token.slice(1, -1);
       const source = sourcesById.get(sourceId);
-      if (source) {
+      const safeUrl = source
+        ? window.LearningAgentUrls?.safeExternalUrl(source.url)
+        : null;
+      if (source && safeUrl) {
         const link = document.createElement("a");
         link.className = "citation";
-        link.href = source.url;
+        link.href = safeUrl;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
+        link.referrerPolicy = "no-referrer";
         link.textContent = `[${sourceId}]`;
         nodes.push(link);
       } else {
@@ -201,10 +205,19 @@ function renderSources(sources) {
   label.textContent = "来源";
   wrapper.append(label);
   for (const source of sources) {
+    const safeUrl = window.LearningAgentUrls?.safeExternalUrl(source.url);
+    if (!safeUrl) {
+      const invalid = document.createElement("div");
+      invalid.className = "sources-title";
+      invalid.textContent = `[${source.source_id}] ${source.title}（来源链接无效）`;
+      wrapper.append(invalid);
+      continue;
+    }
     const link = document.createElement("a");
-    link.href = source.url;
+    link.href = safeUrl;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
+    link.referrerPolicy = "no-referrer";
     const truncated = source.truncated ? "，内容已截断" : "";
     const fromKnowledge = source.provider === "knowledge_base";
     const origin = fromKnowledge ? "知识库" : "网页";

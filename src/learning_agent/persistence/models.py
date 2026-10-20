@@ -258,9 +258,11 @@ class PushSource(Base):
     category: Mapped[str] = mapped_column(String(64), default="AI")
     trust_level: Mapped[str] = mapped_column(String(16), default="trusted")
     auto_push: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 预留字段：V3 明确禁止每日资讯自动入库，不对外暴露。
     auto_ingest: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    # 预留给条件请求增量抓取，尚未接线。
     etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_modified: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -39,9 +39,7 @@ def upgrade() -> None:
         sa.Column("created_at", UTCDateTime(), nullable=False),
         sa.ForeignKeyConstraint(["item_id"], ["push_items.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "item_id", "action", name="uq_push_feedback_item_action"
-        ),
+        sa.UniqueConstraint("item_id", "action", name="uq_push_feedback_item_action"),
     )
     op.create_index("ix_push_feedback_item", "push_feedback", ["item_id"])
     op.create_table(

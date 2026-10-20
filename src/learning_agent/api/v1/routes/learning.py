@@ -24,6 +24,7 @@ from learning_agent.api.v1.schemas import (
 )
 from learning_agent.application.learning_workspace import LearningWorkspaceService
 from learning_agent.domain.errors import AppError, ErrorCode
+from learning_agent.domain.urls import normalize_external_url
 from learning_agent.persistence.learning_store import (
     FlashcardRecord,
     LearningNoteRecord,
@@ -171,12 +172,16 @@ async def search_collection(
 def _source_response(source: NoteSourceRecord | None) -> LearningSourceResponse | None:
     if source is None:
         return None
+    try:
+        safe_url = normalize_external_url(source.url)
+    except ValueError:
+        return None
     return LearningSourceResponse(
         id=source.id,
         label=source.label,
         title=source.title,
         publisher=source.publisher,
-        url=source.url,
+        url=safe_url,
         provider=source.provider,
         excerpt=source.excerpt,
     )

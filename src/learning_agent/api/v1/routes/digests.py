@@ -15,6 +15,7 @@ from learning_agent.api.v1.schemas import (
 )
 from learning_agent.application.digest_service import DailyDigestService, DigestResult
 from learning_agent.domain.errors import AppError, ErrorCode
+from learning_agent.domain.urls import normalize_external_url
 
 router = APIRouter(prefix="/api/v1/digests", tags=["digests"])
 
@@ -162,6 +163,13 @@ async def get_item_ingestion_status(
 
 def _response(result: DigestResult) -> DigestResponse:
     record = result.digest
+    safe_items = []
+    for item in result.items:
+        try:
+            normalize_external_url(item.url)
+        except ValueError:
+            continue
+        safe_items.append(item)
     return DigestResponse(
         digest_date=record.digest_date,
         status=record.status,
@@ -183,7 +191,7 @@ def _response(result: DigestResult) -> DigestResponse:
                 ingestion_job_id=item.ingestion_job_id,
                 ingestion_status=item.ingestion_status,
             )
-            for item in result.items
+            for item in safe_items
         ],
     )
 

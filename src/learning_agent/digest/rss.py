@@ -8,8 +8,10 @@ import html
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import urljoin
 from xml.etree import ElementTree
+
+from learning_agent.domain.urls import normalize_external_url
 
 _TAG_PATTERN = re.compile(r"<[^>]+>")
 _SPACE_PATTERN = re.compile(r"\s+")
@@ -49,7 +51,10 @@ def parse_feed(
         link = _entry_link(element)
         if not title or not link:
             continue
-        url = _canonical_url(urljoin(feed_url, link))
+        try:
+            url = normalize_external_url(urljoin(feed_url, link))
+        except ValueError:
+            continue
         summary = _clean_text(
             _child_text(element, "description")
             or _child_text(element, "summary")
@@ -109,18 +114,6 @@ def _truncate(value: str, limit: int) -> str:
     if len(value) <= limit:
         return value
     return value[: max(0, limit - 1)].rstrip() + "…"
-
-
-def _canonical_url(value: str) -> str:
-    parts = urlsplit(value.strip())
-    scheme = parts.scheme.lower()
-    host = (parts.hostname or "").lower()
-    if scheme not in {"http", "https"} or not host:
-        return value.strip()
-    netloc = host
-    if parts.port is not None:
-        netloc = f"{netloc}:{parts.port}"
-    return urlunsplit((scheme, netloc, parts.path or "/", parts.query, ""))
 
 
 def _parse_date(value: str) -> datetime | None:

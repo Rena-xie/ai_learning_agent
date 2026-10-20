@@ -6,6 +6,7 @@ import uuid
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Request
+from sqlalchemy.exc import IntegrityError
 
 from learning_agent.api.v1.schemas import (
     PushSourceCreateRequest,
@@ -13,9 +14,12 @@ from learning_agent.api.v1.schemas import (
     PushSourceUpdateRequest,
 )
 from learning_agent.domain.errors import AppError, ErrorCode
+from learning_agent.domain.urls import normalize_external_url
+from learning_agent.observability.logging import get_logger
 from learning_agent.persistence.v3_store import SourceRecord, V3Store
 
 router = APIRouter(prefix="/api/v1/push/sources", tags=["push"])
+logger = get_logger(__name__)
 
 
 def _store(request: Request) -> V3Store:
@@ -34,21 +38,35 @@ async def list_sources(request: Request) -> list[PushSourceResponse]:
 async def add_source(
     payload: PushSourceCreateRequest, request: Request
 ) -> PushSourceResponse:
-    parts = urlsplit(payload.feed_url.strip())
-    if parts.scheme not in {"http", "https"} or not parts.hostname:
-        raise AppError(ErrorCode.INVALID_REQUEST, "Feed URL 必须是 HTTP(S) 地址")
-    if parts.hostname.lower().rstrip(".") != payload.domain.strip().lower().rstrip("."):
+    try:
+        feed_url = normalize_external_url(payload.feed_url)
+    except ValueError as exc:
+        raise AppError(
+            ErrorCode.INVALID_REQUEST, "Feed URL 必须是安全的 HTTP(S) 地址"
+        ) from exc
+    parts = urlsplit(feed_url)
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    if port not in request.app.state.settings.allowed_ports_set:
+        raise AppError(ErrorCode.INVALID_REQUEST, "Feed URL 端口不被允许")
+    domain = payload.domain.strip().lower().rstrip(".")
+    if parts.hostname != domain:
         raise AppError(ErrorCode.INVALID_REQUEST, "Feed 域名必须与 domain 字段一致")
     try:
         record = _store(request).add_source(
             source_id=f"user-{uuid.uuid4().hex}",
             name=payload.name,
-            feed_url=payload.feed_url,
-            domain=payload.domain,
+            feed_url=feed_url,
+            domain=domain,
             category=payload.category,
         )
-    except Exception as exc:
-        raise AppError(ErrorCode.INVALID_REQUEST, f"添加来源失败: {exc}") from exc
+    except IntegrityError as exc:
+        logger.warning(
+            "push_source_rejected",
+            extra={"extra_fields": {"reason": "duplicate"}},
+        )
+        raise AppError(
+            ErrorCode.INVALID_REQUEST, "该 Feed 已存在或与现有来源冲突"
+        ) from exc
     return _source_response(record)
 
 
@@ -71,7 +89,6 @@ def _source_response(record: SourceRecord) -> PushSourceResponse:
         category=record.category,
         trust_level=record.trust_level,
         auto_push=record.auto_push,
-        auto_ingest=record.auto_ingest,
         enabled=record.enabled,
         last_checked_at=record.last_checked_at,
         last_error=record.last_error,

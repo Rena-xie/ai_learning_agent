@@ -15,6 +15,7 @@ from learning_agent.agent.context_builder import ContextBuilder
 from learning_agent.agent.runtime import AgentRuntime
 from learning_agent.agent.tool_registry import ToolHandler, ToolRegistry
 from learning_agent.api.errors import register_exception_handlers
+from learning_agent.api.security_headers import install_security_headers
 from learning_agent.api.v1.routes import (
     conversations,
     digests,
@@ -98,6 +99,12 @@ def create_app(
     learning_store = LearningStore(session_factory)
     if resolved.digest_enabled and resolved.digest_seed_default_sources:
         v3_store.seed_sources(DEFAULT_SOURCES)
+    quarantined_items = v3_store.quarantine_invalid_push_items()
+    if quarantined_items:
+        logger.warning(
+            "invalid_push_items_quarantined",
+            extra={"extra_fields": {"count": quarantined_items}},
+        )
     recovered_runs = repositories.fail_stale_runs()
     if recovered_runs:
         logger.warning(
@@ -261,7 +268,7 @@ def create_app(
                 await active_notifier.close()
             engine.dispose()
 
-    app = FastAPI(title="AI Learning Agent", version="3.3.0", lifespan=lifespan)
+    app = FastAPI(title="AI Learning Agent", version="3.3.1", lifespan=lifespan)
     app.state.settings = resolved
     app.state.repositories = repositories
     app.state.async_repositories = async_repositories
@@ -280,6 +287,8 @@ def create_app(
     )
     app.state.ingestion_watcher = ingestion_watcher
     register_exception_handlers(app)
+    install_security_headers(app)
+    install_security_headers(app)
     app.include_router(health.router)
     app.include_router(conversations.router)
     app.include_router(messages.router)

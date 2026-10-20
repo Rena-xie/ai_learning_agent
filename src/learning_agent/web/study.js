@@ -72,6 +72,10 @@ function studyElement(tag, className, text) {
   return node;
 }
 
+function studySafeUrl(value) {
+  return window.LearningAgentUrls?.safeExternalUrl(value) || null;
+}
+
 function setStudyStatus(text, kind) {
   if (!text) {
     studyElements.status.hidden = true;
@@ -150,10 +154,16 @@ function renderDigest() {
       ),
     );
     const actions = studyElement("div", "item-actions");
-    const link = studyElement("a", "text-link", "打开原文");
-    link.href = item.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
+    const safeItemUrl = studySafeUrl(item.url);
+    const link = safeItemUrl
+      ? studyElement("a", "text-link", "打开原文")
+      : studyElement("span", "item-meta", "来源链接无效");
+    if (link.tagName === "A") {
+      link.href = safeItemUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.referrerPolicy = "no-referrer";
+    }
     const noteButton = studyElement(
       "button",
       "primary",
@@ -340,14 +350,24 @@ function renderNoteDetail(note) {
   studyElements.noteSources.replaceChildren();
   for (const source of note.sources) {
     const row = studyElement("div", "source-row");
-    const link = studyElement(
-      "a",
-      "text-link",
-      `[${source.label}] ${source.publisher} · ${source.title}`,
-    );
-    link.href = source.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
+    const safeSourceUrl = studySafeUrl(source.url);
+    const link = safeSourceUrl
+      ? studyElement(
+          "a",
+          "text-link",
+          `[${source.label}] ${source.publisher} · ${source.title}`,
+        )
+      : studyElement(
+          "span",
+          "item-meta",
+          `[${source.label}] ${source.title}（来源链接无效）`,
+        );
+    if (link.tagName === "A") {
+      link.href = safeSourceUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.referrerPolicy = "no-referrer";
+    }
     row.append(link);
     studyElements.noteSources.append(row);
   }
@@ -408,15 +428,19 @@ function renderQuiz(quiz) {
     const answer = studyElement("p", "quiz-answer", question.answer);
     details.append(answer);
     if (question.source) {
-      const link = studyElement(
-        "a",
-        "text-link",
-        `来源 [${question.source.label}] ${question.source.publisher}`,
-      );
-      link.href = question.source.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      details.append(link);
+      const safeSourceUrl = studySafeUrl(question.source.url);
+      if (safeSourceUrl) {
+        const link = studyElement(
+          "a",
+          "text-link",
+          `来源 [${question.source.label}] ${question.source.publisher}`,
+        );
+        link.href = safeSourceUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.referrerPolicy = "no-referrer";
+        details.append(link);
+      }
     }
     studyElements.quizOutput.append(details);
   }

@@ -51,6 +51,7 @@ async def test_static_ui_is_served(tmp_path) -> None:
         study = await client.get("/study.html")
         study_script = await client.get("/study.js")
         study_styles = await client.get("/study.css")
+        safe_url_script = await client.get("/safe-url.js")
 
     assert index.status_code == 200
     assert index.headers["content-type"].startswith("text/html")
@@ -58,12 +59,18 @@ async def test_static_ui_is_served(tmp_path) -> None:
         assert f'id="{element_id}"' in index.text
     assert script.status_code == 200
     assert styles.status_code == 200
+    assert safe_url_script.status_code == 200
     assert 'href="/study.html"' in index.text
+    assert 'src="/safe-url.js"' in index.text
     assert study.status_code == 200
     for element_id in STUDY_ELEMENT_IDS:
         assert f'id="{element_id}"' in study.text
     assert study_script.status_code == 200
     assert study_styles.status_code == 200
+    assert 'src="/safe-url.js"' in study.text
+    assert "script-src 'self'" in index.headers["content-security-policy"]
+    assert index.headers["x-content-type-options"] == "nosniff"
+    assert index.headers["referrer-policy"] == "no-referrer"
 
 
 async def test_api_and_health_routes_still_work_with_static_mount(tmp_path) -> None:

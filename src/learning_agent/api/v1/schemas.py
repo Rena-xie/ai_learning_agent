@@ -137,7 +137,6 @@ class PushSourceResponse(BaseModel):
     category: str
     trust_level: str
     auto_push: bool
-    auto_ingest: bool
     enabled: bool
     last_checked_at: datetime | None = None
     last_error: str | None = None

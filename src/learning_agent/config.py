@@ -84,7 +84,6 @@ class Settings(BaseSettings):
     digest_recheck_interval_s: int = Field(default=3600, ge=60, le=86_400)
     digest_catch_up_days: int = Field(default=1, ge=0, le=7)
     digest_top_n: int = Field(default=8, ge=1, le=30)
-    digest_max_age_days: int = Field(default=7, ge=1, le=90)
     digest_source_concurrency: int = Field(default=4, ge=1, le=20)
     digest_fetch_timeout_s: float = Field(default=15.0, gt=0, le=120)
     digest_max_feed_bytes: int = Field(default=2_000_000, ge=1_000, le=20_000_000)

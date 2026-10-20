@@ -68,11 +68,13 @@ class FeishuNotifier:
                         data = None
                     if not isinstance(data, dict) or data.get("code", 0) == 0:
                         return FeishuResult(status="delivered", attempts=attempt + 1)
-                    last_error = f"飞书返回业务错误: {data}"
+                    last_error = "飞书返回业务错误"
                 else:
-                    last_error = f"HTTP {response.status_code}: {response.text[:200]}"
-            except httpx.HTTPError as exc:
-                last_error = f"{type(exc).__name__}: {exc}"
+                    last_error = f"飞书 HTTP {response.status_code}"
+            except httpx.TimeoutException:
+                last_error = "飞书请求超时"
+            except httpx.HTTPError:
+                last_error = "飞书网络请求失败"
             if attempt < self._max_retries:
                 import asyncio
 

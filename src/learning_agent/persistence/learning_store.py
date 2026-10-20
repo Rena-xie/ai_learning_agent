@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -449,16 +449,6 @@ class LearningStore:
             correct_reviews=correct_reviews,
             topics=ordered_topics,
         )
-
-    def delete_note(self, note_id: int) -> None:
-        with self._session() as session:
-            note = session.get(LearningNote, note_id)
-            if note is None:
-                raise AppError(ErrorCode.NOT_FOUND, "学习笔记不存在")
-            session.execute(
-                delete(LearningNoteSource).where(LearningNoteSource.note_id == note_id)
-            )
-            session.delete(note)
 
     @staticmethod
     def _note_view(session: Session, row: LearningNote) -> LearningNoteRecord:

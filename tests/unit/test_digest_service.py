@@ -77,6 +77,13 @@ class CatchUpFeedFetcher(FakeFeedFetcher):
         return _CATCH_UP_RSS
 
 
+class FailingFeedFetcher(FakeFeedFetcher):
+    async def fetch(self, feed_url: str, *, allowed_domains: tuple[str, ...]) -> str:
+        raise RuntimeError(
+            f"upstream failed for {feed_url} token=super-secret-response"
+        )
+
+
 def build_settings(database_url: str) -> Settings:
     return Settings(
         _env_file=None,
@@ -179,3 +186,24 @@ async def test_run_due_catches_up_yesterday_and_today(
     assert result.digest.digest_date == "2026-10-20"
     assert result.items[0].title == "今天的 RAG 更新"
     assert len(notifier.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_feed_failure_uses_safe_error_classification(
+    store: tuple[V3Store, str],
+) -> None:
+    v3_store, database_url = store
+    service = DailyDigestService(
+        settings=build_settings(database_url),
+        store=v3_store,
+        feed_fetcher=FailingFeedFetcher(),  # type: ignore[arg-type]
+        notifier=FakeNotifier(),  # type: ignore[arg-type]
+        now=datetime(2026, 10, 20, 8, tzinfo=UTC),
+    )
+
+    result = await service.run_today()
+    source = v3_store.list_sources(enabled_only=True)[0]
+
+    assert result.digest.error_message is None
+    assert source.last_error == "RuntimeError"
+    assert "super-secret-response" not in (source.last_error or "")

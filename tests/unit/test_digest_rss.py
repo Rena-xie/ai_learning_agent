@@ -48,3 +48,20 @@ def test_parses_atom_entries_and_skips_invalid() -> None:
 
 def test_invalid_xml_returns_empty_list() -> None:
     assert parse_feed("<not-xml", feed_url="https://example.com/feed") == []
+
+
+def test_skips_entries_with_unsafe_link_schemes() -> None:
+    xml = """<rss version="2.0"><channel>
+      <item>
+        <title>Malicious</title>
+        <link>javascript:alert(document.domain)</link>
+      </item>
+      <item>
+        <title>Safe</title>
+        <link>https://example.com/safe</link>
+      </item>
+    </channel></rss>"""
+
+    entries = parse_feed(xml, feed_url="https://example.com/feed")
+
+    assert [entry.url for entry in entries] == ["https://example.com/safe"]

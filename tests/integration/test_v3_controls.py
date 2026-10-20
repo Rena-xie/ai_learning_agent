@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from learning_agent.config import Settings
 from learning_agent.digest.feishu import FeishuResult
@@ -104,6 +105,30 @@ def test_v31_control_flow(tmp_path) -> None:
                 "category": "Agent",
             },
         ).json()
+        unsafe_source = client.post(
+            "/api/v1/push/sources",
+            json={
+                "name": "Unsafe",
+                "feed_url": "javascript:alert(document.domain)",
+                "domain": "example.com",
+                "category": "AI",
+            },
+        )
+        assert unsafe_source.status_code == 400
+        assert unsafe_source.json()["error"]["message"] == (
+            "Feed URL 必须是安全的 HTTP(S) 地址"
+        )
+        duplicate_source = client.post(
+            "/api/v1/push/sources",
+            json={
+                "name": "Duplicate",
+                "feed_url": "https://example.com/feed.xml",
+                "domain": "example.com",
+                "category": "AI",
+            },
+        )
+        assert duplicate_source.status_code == 400
+        assert "UNIQUE constraint" not in duplicate_source.text
         preferences = client.patch(
             "/api/v1/push/preferences",
             json={
@@ -200,3 +225,60 @@ def test_v31_control_flow(tmp_path) -> None:
         reset = client.post("/api/v1/learning-profile/reset")
         assert reset.status_code == 204
         assert client.get("/api/v1/learning-profile").json()["topics"] == []
+
+
+def test_invalid_historical_push_items_are_quarantined(tmp_path) -> None:
+    app = create_app(
+        _settings(f"sqlite:///{(tmp_path / 'quarantine.db').as_posix()}"),
+        digest_feed_fetcher=FakeFeedFetcher(),  # type: ignore[arg-type]
+        feishu_notifier=FakeNotifier(),  # type: ignore[arg-type]
+        digest_now=datetime(2026, 10, 20, 8, tzinfo=UTC),
+    )
+
+    with TestClient(app) as client:
+        source = client.post(
+            "/api/v1/push/sources",
+            json={
+                "name": "Example AI",
+                "feed_url": "https://example.com/feed.xml",
+                "domain": "example.com",
+                "category": "Agent",
+            },
+        ).json()
+        with app.state.engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO push_items
+                        (source_id, canonical_url, title, summary, topic,
+                         published_at, fetched_at, content_hash, status)
+                    VALUES
+                        (:source_id, :url, 'Unsafe', 'unsafe', 'AI',
+                         :published_at, :fetched_at, 'unsafe', 'new')
+                    """
+                ),
+                {
+                    "source_id": source["id"],
+                    "url": "javascript:alert(document.domain)",
+                    "published_at": "2026-10-20 09:00:00",
+                    "fetched_at": "2026-10-20 09:00:00",
+                },
+            )
+            item_id = int(
+                connection.scalar(
+                    text(
+                        "SELECT id FROM push_items "
+                        "WHERE canonical_url = 'javascript:alert(document.domain)'"
+                    )
+                )
+            )
+        digest = app.state.v3_store.create_digest("2026-10-20")
+        app.state.v3_store.complete_digest(
+            digest.id,
+            content="unsafe",
+            item_count=1,
+            items=[(item_id, "unsafe", "Unsafe")],
+        )
+
+        assert app.state.v3_store.quarantine_invalid_push_items() == 1
+        assert app.state.v3_store.list_digest_items(digest.id) == []

@@ -59,3 +59,23 @@ async def test_retries_after_server_error() -> None:
 
     assert result.status == "delivered"
     assert result.attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_failure_does_not_store_response_body() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="internal-secret-and-response-body")
+
+    notifier = FeishuNotifier(
+        webhook_url="https://feishu.example/webhook",
+        max_retries=0,
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = await notifier.send("AI 日报")
+    finally:
+        await notifier.close()
+
+    assert result.status == "failed"
+    assert result.error == "飞书 HTTP 500"
+    assert "internal-secret" not in (result.error or "")

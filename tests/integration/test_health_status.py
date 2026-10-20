@@ -61,5 +61,5 @@ async def test_ready_reports_knowledge_base_disabled(tmp_path: Path) -> None:
 def test_app_version_matches_v33_release(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, knowledge_base_enabled=False))
 
-    assert __version__ == "3.3.0"
-    assert app.version == "3.3.0"
+    assert __version__ == "3.3.1"
+    assert app.version == "3.3.1"
