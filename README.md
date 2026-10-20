@@ -18,7 +18,7 @@ Docker Compose · pytest / ruff / GitHub Actions
 | 运行形态 | 单用户、单进程、模块化单体；默认仅监听 `127.0.0.1` |
 | 数据存储 | SQLite（对话、消息、运行、工具调用、文档快照、来源关联） |
 | 当前版本 | 2.0.0（v2 知识库接入，含异步运行、异步数据访问、成本估算与快照去重） |
-| 质量证据 | 216 个离线测试（含知识库全链路）+ 12 个真实模型测试；12 个固定评估案例；CI 覆盖格式、Lint 与离线测试 |
+| 质量证据 | 220 个离线测试（含知识库全链路）+ 12 个真实模型测试；12 个固定评估案例；CI 覆盖格式、Lint 与离线测试 |
 
 ## 架构
 
@@ -242,9 +242,9 @@ RAG 请求对 GET 与检索做有限重试，入库仅在带幂等键时重试
 
 | 检查 | 内容 | 结果 |
 | --- | --- | --- |
-| 单元 / 集成 / E2E | 216 个离线测试：URL 策略、工具注册、上下文预算、引用校验、并发、重启恢复、迁移、备份恢复、注入防护、知识库接入等 | 2026-10-19：216 passed |
+| 单元 / 集成 / E2E | 220 个离线测试：URL 策略、工具注册、上下文预算、引用校验、并发、重启恢复、迁移、备份恢复、注入防护、知识库接入等 | 2026-10-20：220 passed |
 | 真实模型测试 | 12 个真实 API + 真实文档链路测试 | 2026-10-13：12 passed（产生外部请求与费用） |
-| 知识库真实冒烟 | 5 篇语料 + 3 个知识库问题（真实 RAG + 真实模型） | 2026-10-20：通过，来源均为 `knowledge_base` |
+| 知识库真实冒烟 | 5 篇语料 + 3 个知识库问题（真实 RAG + 真实模型） | 2026-10-20：3/3 通过（[结果](evals/results/knowledge-smoke-20261020.json)） |
 | 静态检查 | `ruff format --check` + `ruff check` | 通过 |
 | CI | GitHub Actions：格式、Lint、离线测试 | `.github/workflows/ci.yml` |
 | Agent 评估 | 12 个固定案例，规则化判定 + 基线回归 | 12/12（2026-10-13 基线） |
@@ -322,6 +322,18 @@ uv run pytest -m real_model         # 真实模型测试（需要密钥，产生
 uv run ruff format --check .
 uv run ruff check .
 ```
+
+### 知识库冒烟
+
+Agent 与 RAG 都启动后，可对知识库链路做一次真实冒烟（需要模型 API）：
+
+```powershell
+uv run python -m scripts.smoke_knowledge --base-url http://127.0.0.1:8000 `
+  --output evals/results/knowledge-smoke-<date>.json
+```
+
+脚本要求 `/health/ready` 的 `knowledge_base` 为 `ok`，逐题校验 201、`[S1]` 引用与
+`provider=knowledge_base` 来源；任一题失败时退出码为 1。
 
 ### Docker Compose
 

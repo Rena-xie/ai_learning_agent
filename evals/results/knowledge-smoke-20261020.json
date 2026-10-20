@@ -1,0 +1,42 @@
+{
+  "created_at": "2026-10-20T05:28:42.877713+00:00",
+  "base_url": "http://127.0.0.1:8768",
+  "questions": 3,
+  "passed": 3,
+  "all_passed": true,
+  "results": [
+    {
+      "status": 201,
+      "passed": true,
+      "citation_present": true,
+      "sources": 4,
+      "providers": [
+        "knowledge_base"
+      ],
+      "run_id": "17053afa-7344-4361-bc26-b069fe27a87d",
+      "question": "RAG 的核心定义是什么？"
+    },
+    {
+      "status": 201,
+      "passed": true,
+      "citation_present": true,
+      "sources": 13,
+      "providers": [
+        "knowledge_base"
+      ],
+      "run_id": "4ecb05bd-a7aa-4011-b96e-625cd5d0ae23",
+      "question": "文本分块有哪些常见策略？"
+    },
+    {
+      "status": 201,
+      "passed": true,
+      "citation_present": true,
+      "sources": 10,
+      "providers": [
+        "knowledge_base"
+      ],
+      "run_id": "7d01b6a8-27b9-4251-8787-7d6653008c0d",
+      "question": "如何评估一个 RAG 系统？"
+    }
+  ]
+}
