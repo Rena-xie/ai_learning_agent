@@ -263,6 +263,223 @@
   color: var(--danger);
 }
 
+.feedback-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feedback-button.selected {
+  border-color: var(--accent);
+  background: rgba(47, 111, 237, 0.12);
+  color: var(--accent);
+}
+
+.settings-form {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(120px, 0.6fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.settings-form input,
+.profile-topic select,
+.profile-concept select {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-form fieldset {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.settings-form legend {
+  padding: 0 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.source-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.source-option {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 7px !important;
+  color: var(--text) !important;
+}
+
+.source-option input {
+  width: auto;
+  min-height: auto;
+}
+
+.subsection-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 0 10px;
+}
+
+.subsection-heading h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.source-health-list,
+.profile-topic-list {
+  display: grid;
+  gap: 10px;
+}
+
+.source-health-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.source-health-details {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  word-break: break-word;
+}
+
+.source-error {
+  color: var(--danger);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-health-controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.health-badge {
+  padding: 3px 8px;
+  border-radius: 99px;
+  font-size: 12px;
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--muted);
+}
+
+.health-badge.ok {
+  color: var(--ok);
+  background: rgba(27, 127, 75, 0.1);
+}
+
+.health-badge.error {
+  color: var(--danger);
+  background: rgba(198, 40, 40, 0.1);
+}
+
+.health-badge.disabled {
+  color: var(--muted);
+}
+
+.source-add {
+  margin-top: 16px;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+
+.source-add summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.settings-form--compact {
+  grid-template-columns: minmax(140px, 1fr) minmax(220px, 2fr) minmax(100px, 0.5fr);
+  margin-top: 12px;
+}
+
+.profile-topic {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.profile-topic-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.profile-topic-header h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.profile-topic-controls {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.profile-topic-controls select {
+  width: auto;
+}
+
+.profile-concept {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(150px, 1.3fr) minmax(110px, 0.5fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.badge--muted {
+  color: var(--muted);
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.badge--error {
+  color: var(--danger);
+  background: rgba(198, 40, 40, 0.1);
+}
+
+.danger-zone {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+
 @media (max-width: 760px) {
   .study-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -278,5 +495,20 @@
 
   .study-topbar h1 {
     margin-top: 4px;
+  }
+
+  .settings-form,
+  .settings-form--compact {
+    grid-template-columns: 1fr;
+  }
+
+  .source-health-row,
+  .profile-topic-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .profile-concept {
+    grid-template-columns: 1fr;
   }
 }

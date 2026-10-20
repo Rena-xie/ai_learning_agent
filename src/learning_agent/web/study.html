@@ -75,6 +75,107 @@
         <p id="reviews-empty" class="empty-hint">当前没有到期闪卡。</p>
         <div id="due-reviews" class="review-list"></div>
       </section>
+
+      <section class="study-panel" id="daily-settings">
+        <div class="panel-heading">
+          <div>
+            <h2>资讯偏好与来源</h2>
+            <p class="panel-hint">
+              控制每日主题、来源和条数；来源异常时可在此检查并暂停。
+            </p>
+          </div>
+        </div>
+        <form id="preferences-form" class="settings-form">
+          <label>
+            <span>关注主题</span>
+            <input
+              id="preferred-topics"
+              type="text"
+              placeholder="Agent, RAG, 评测（逗号分隔，留空表示全部）"
+            />
+          </label>
+          <label>
+            <span>每日条数</span>
+            <input
+              id="preferred-top-n"
+              type="number"
+              min="1"
+              max="30"
+              required
+            />
+          </label>
+          <label>
+            <span>补发天数</span>
+            <input
+              id="preferred-catch-up"
+              type="number"
+              min="0"
+              max="7"
+              required
+            />
+          </label>
+          <fieldset>
+            <legend>资讯来源</legend>
+            <div id="source-options" class="source-options"></div>
+          </fieldset>
+          <button id="save-preferences" type="submit" class="primary">
+            保存偏好
+          </button>
+        </form>
+
+        <div class="subsection-heading">
+          <h3>来源健康</h3>
+          <span class="panel-hint">“异常”来源仍可选择，但抓取会继续失败。</span>
+        </div>
+        <p id="sources-empty" class="empty-hint">暂无资讯来源。</p>
+        <div id="source-health-list" class="source-health-list"></div>
+
+        <details class="source-add">
+          <summary>添加 RSS / Atom 来源</summary>
+          <form id="source-add-form" class="settings-form settings-form--compact">
+            <label>
+              <span>来源名称</span>
+              <input id="source-name" type="text" required maxlength="120" />
+            </label>
+            <label>
+              <span>Feed URL</span>
+              <input
+                id="source-feed-url"
+                type="url"
+                required
+                placeholder="https://example.com/feed.xml"
+              />
+            </label>
+            <label>
+              <span>类别</span>
+              <input id="source-category" type="text" value="AI" maxlength="64" />
+            </label>
+            <button type="submit">添加来源</button>
+          </form>
+        </details>
+      </section>
+
+      <section class="study-panel" id="profile-settings">
+        <div class="panel-heading">
+          <div>
+            <h2>学习画像</h2>
+            <p class="panel-hint">
+              校正主题和概念掌握度；你的手动修改不会被自动规则覆盖。
+            </p>
+          </div>
+          <div class="study-actions">
+            <span id="profile-enabled-label" class="badge">加载中</span>
+            <button id="toggle-profile" type="button">关闭画像</button>
+          </div>
+        </div>
+        <p id="profile-empty" class="empty-hint">学习画像暂无主题。</p>
+        <div id="profile-topics" class="profile-topic-list"></div>
+        <div class="danger-zone">
+          <button id="reset-profile" type="button" class="danger">
+            清空学习画像
+          </button>
+        </div>
+      </section>
     </main>
 
     <div id="study-status" class="study-status" role="status" hidden></div>

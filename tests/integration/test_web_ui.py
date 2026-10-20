@@ -25,6 +25,13 @@ STUDY_ELEMENT_IDS = (
     "generate-quiz",
     "generate-cards",
     "due-reviews",
+    "preferences-form",
+    "source-options",
+    "source-health-list",
+    "source-add-form",
+    "toggle-profile",
+    "profile-topics",
+    "reset-profile",
     "study-status",
 )
 
