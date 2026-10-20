@@ -128,6 +128,31 @@ class TestHostAllowlist:
         expect_error(ErrorCode.URL_NOT_ALLOWED, policy, "https://docs.example.com/a")
         assert policy.is_allowed_host(ALLOWED_HOST) is False
 
+    def test_open_public_mode_allows_unknown_public_host(self) -> None:
+        policy = UrlPolicy(
+            allowed_hosts=frozenset(),
+            allow_public_web=True,
+            resolver=resolver_returning(PUBLIC_IP),
+        )
+
+        target = policy.validate("https://new-source.example.org/article")
+
+        assert target.host == "new-source.example.org"
+        assert target.resolved_ips == (PUBLIC_IP,)
+
+    def test_open_public_mode_still_blocks_private_targets(self) -> None:
+        policy = UrlPolicy(
+            allowed_hosts=frozenset(),
+            allow_public_web=True,
+            resolver=resolver_returning("10.0.0.1"),
+        )
+
+        expect_error(
+            ErrorCode.SSRF_TARGET_BLOCKED,
+            policy,
+            "https://internal.example.org/article",
+        )
+
     def test_trailing_dot_and_case_are_normalized(self) -> None:
         assert make_policy().is_allowed_host("Docs.Example.com.") is True
         assert (

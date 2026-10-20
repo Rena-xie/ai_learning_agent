@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -239,3 +240,172 @@ class RunSource(Base):
     document_snapshot_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("document_snapshots.id", ondelete="CASCADE")
     )
+
+
+class PushSource(Base):
+    """每日资讯来源注册表。"""
+
+    __tablename__ = "push_sources"
+    __table_args__ = (
+        UniqueConstraint("feed_url", name="uq_push_sources_feed_url"),
+        Index("ix_push_sources_enabled", "enabled"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    feed_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), default="AI")
+    trust_level: Mapped[str] = mapped_column(String(16), default="trusted")
+    auto_push: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_ingest: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_modified: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime, default=utcnow, onupdate=utcnow
+    )
+
+
+class PushItem(Base):
+    """从 RSS/Atom 抓取到的候选资讯；不自动进入 RAG。"""
+
+    __tablename__ = "push_items"
+    __table_args__ = (
+        UniqueConstraint("canonical_url", name="uq_push_items_canonical_url"),
+        Index("ix_push_items_published", "published_at"),
+        Index("ix_push_items_source", "source_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("push_sources.id", ondelete="CASCADE")
+    )
+    canonical_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    topic: Mapped[str] = mapped_column(String(64), default="AI")
+    published_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="new")
+
+
+class PushDigest(Base):
+    """某个日期的 Daily Digest。"""
+
+    __tablename__ = "push_digests"
+    __table_args__ = (
+        UniqueConstraint("digest_date", name="uq_push_digests_date"),
+        Index("ix_push_digests_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    digest_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="queued")
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    content: Mapped[str] = mapped_column(Text, default="")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+
+class PushDigestItem(Base):
+    """Digest 与候选资讯的排序关联。"""
+
+    __tablename__ = "push_digest_items"
+
+    digest_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("push_digests.id", ondelete="CASCADE"), primary_key=True
+    )
+    item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("push_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, default="")
+
+
+class PushDelivery(Base):
+    """Digest 的渠道投递记录。"""
+
+    __tablename__ = "push_deliveries"
+    __table_args__ = (
+        UniqueConstraint("digest_id", "channel", name="uq_push_delivery_channel"),
+        Index("ix_push_deliveries_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    digest_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("push_digests.id", ondelete="CASCADE")
+    )
+    channel: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class LearningTopic(Base):
+    """跨对话学习主题。"""
+
+    __tablename__ = "learning_topics"
+    __table_args__ = (UniqueConstraint("name", name="uq_learning_topics_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="learning")
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime, default=utcnow, onupdate=utcnow
+    )
+
+
+class LearningConcept(Base):
+    """主题下的概念与掌握状态。"""
+
+    __tablename__ = "learning_concepts"
+    __table_args__ = (
+        UniqueConstraint("topic_id", "name", name="uq_learning_concept_topic_name"),
+        Index("ix_learning_concepts_topic", "topic_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    topic_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("learning_topics.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    mastery: Mapped[str] = mapped_column(String(16), default="learning")
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    evidence_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime, default=utcnow, onupdate=utcnow
+    )
+
+
+class LearningEvent(Base):
+    """画像结论的证据事件。"""
+
+    __tablename__ = "learning_events"
+    __table_args__ = (Index("ix_learning_events_created", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    topic_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("learning_topics.id", ondelete="CASCADE")
+    )
+    concept_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("learning_concepts.id", ondelete="SET NULL")
+    )
+    conversation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    evidence_text: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

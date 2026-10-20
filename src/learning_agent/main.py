@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -14,11 +15,26 @@ from learning_agent.agent.context_builder import ContextBuilder
 from learning_agent.agent.runtime import AgentRuntime
 from learning_agent.agent.tool_registry import ToolHandler, ToolRegistry
 from learning_agent.api.errors import register_exception_handlers
-from learning_agent.api.v1.routes import conversations, health, messages, runs, stats
+from learning_agent.api.v1.routes import (
+    conversations,
+    digests,
+    health,
+    learning_profile,
+    messages,
+    push_sources,
+    runs,
+    stats,
+)
 from learning_agent.application.chat_service import ChatService
+from learning_agent.application.digest_scheduler import DigestScheduler
+from learning_agent.application.digest_service import DailyDigestService
 from learning_agent.application.ingestion_watcher import IngestionWatcher
+from learning_agent.application.learning_profile import LearningProfileService
 from learning_agent.application.run_scheduler import RunScheduler
 from learning_agent.config import Settings, get_settings
+from learning_agent.digest.feed import FeedFetcher
+from learning_agent.digest.feishu import FeishuNotifier
+from learning_agent.digest.sources import DEFAULT_SOURCES
 from learning_agent.models.base import ModelClient
 from learning_agent.models.provider_adapter import OpenAICompatibleModelClient
 from learning_agent.observability.logging import configure_logging, get_logger
@@ -26,6 +42,7 @@ from learning_agent.persistence.async_repositories import AsyncRepositories
 from learning_agent.persistence.database import build_engine, build_session_factory
 from learning_agent.persistence.migrations import apply_migrations
 from learning_agent.persistence.repositories import Repositories
+from learning_agent.persistence.v3_store import V3Store
 from learning_agent.tools.document.fetcher import DocumentFetcher
 from learning_agent.tools.document.tool import FetchDocumentTool
 from learning_agent.tools.document.url_policy import Resolver, UrlPolicy
@@ -52,6 +69,10 @@ def create_app(
     document_resolver: Resolver | None = None,
     model_client: ModelClient | None = None,
     knowledge_client: KnowledgeBasePort | None = None,
+    digest_feed_fetcher: FeedFetcher | None = None,
+    feishu_notifier: FeishuNotifier | None = None,
+    digest_now: datetime | None = None,
+    feishu_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     """构建应用实例；必需配置缺失时抛出错误并停止不完整启动。
 
@@ -66,8 +87,12 @@ def create_app(
 
     apply_migrations(resolved.database_url)
     engine = build_engine(resolved.database_url)
-    repositories = Repositories(build_session_factory(engine))
+    session_factory = build_session_factory(engine)
+    repositories = Repositories(session_factory)
     async_repositories = AsyncRepositories(repositories)
+    v3_store = V3Store(session_factory)
+    if resolved.digest_enabled and resolved.digest_seed_default_sources:
+        v3_store.seed_sources(DEFAULT_SOURCES)
     recovered_runs = repositories.fail_stale_runs()
     if recovered_runs:
         logger.warning(
@@ -77,6 +102,7 @@ def create_app(
 
     policy = UrlPolicy(
         allowed_hosts=resolved.allowed_hosts_set,
+        allow_public_web=resolved.manual_fetch_mode == "open_public",
         allowed_ports=resolved.allowed_ports_set,
         **({"resolver": document_resolver} if document_resolver else {}),
     )
@@ -156,12 +182,42 @@ def create_app(
         price_input_per_1k=resolved.model_price_input_per_1k,
         price_output_per_1k=resolved.model_price_output_per_1k,
     )
+    feed_fetcher = digest_feed_fetcher or FeedFetcher(
+        timeout_s=resolved.digest_fetch_timeout_s,
+        max_bytes=resolved.digest_max_feed_bytes,
+        max_redirects=resolved.max_redirects,
+        transport=document_transport,
+        resolver=document_resolver,
+    )
+    active_notifier = feishu_notifier
+    if active_notifier is None and resolved.feishu_enabled:
+        active_notifier = FeishuNotifier(
+            webhook_url=resolved.feishu_webhook_url,
+            secret=resolved.feishu_webhook_secret,
+            transport=feishu_transport,
+        )
+    digest_service = DailyDigestService(
+        settings=resolved,
+        store=v3_store,
+        feed_fetcher=feed_fetcher,
+        notifier=active_notifier,
+        now=digest_now,
+    )
+    digest_scheduler = DigestScheduler(
+        digest_service,
+        enabled=resolved.digest_enabled and resolved.digest_trigger == "on_startup",
+        recheck_interval_s=resolved.digest_recheck_interval_s,
+    )
+    profile_service = LearningProfileService(
+        store=v3_store, enabled=resolved.learning_profile_enabled
+    )
     scheduler = RunScheduler()
     chat_service = ChatService(
         runtime=runtime,
         repositories=async_repositories,
         max_input_chars=resolved.max_input_chars,
         scheduler=scheduler,
+        profile_service=profile_service,
     )
 
     @asynccontextmanager
@@ -180,22 +236,30 @@ def create_app(
         try:
             if ingestion_watcher is not None:
                 ingestion_watcher.start()
+            digest_scheduler.start()
             yield
         finally:
+            await digest_scheduler.stop()
             if ingestion_watcher is not None:
                 await ingestion_watcher.stop()
             await scheduler.shutdown()
             await active_model.aclose()
             if active_knowledge_client is not None:
                 await active_knowledge_client.aclose()
+            if active_notifier is not None:
+                await active_notifier.close()
             engine.dispose()
 
-    app = FastAPI(title="AI Learning Agent", version="2.0.0", lifespan=lifespan)
+    app = FastAPI(title="AI Learning Agent", version="3.0.0", lifespan=lifespan)
     app.state.settings = resolved
     app.state.repositories = repositories
     app.state.async_repositories = async_repositories
+    app.state.v3_store = v3_store
     app.state.scheduler = scheduler
     app.state.chat_service = chat_service
+    app.state.digest_service = digest_service
+    app.state.digest_scheduler = digest_scheduler
+    app.state.learning_profile_service = profile_service
     app.state.engine = engine
     app.state.tool_registry = tool_registry
     app.state.knowledge_client = (
@@ -208,6 +272,9 @@ def create_app(
     app.include_router(messages.router)
     app.include_router(runs.router)
     app.include_router(stats.router)
+    app.include_router(digests.router)
+    app.include_router(push_sources.router)
+    app.include_router(learning_profile.router)
     if _WEB_DIR.is_dir():
         # 静态界面挂在最后，保证 /api 与 /health 路由优先匹配
         app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")

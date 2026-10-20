@@ -6,6 +6,7 @@ import logging
 import uuid
 
 from learning_agent.agent.runtime import AgentRuntime, RunOutcome
+from learning_agent.application.learning_profile import LearningProfileService
 from learning_agent.application.run_scheduler import RunScheduler
 from learning_agent.domain.errors import AppError, ErrorCode
 
@@ -25,11 +26,13 @@ class ChatService:
         repositories: object,
         max_input_chars: int,
         scheduler: RunScheduler,
+        profile_service: LearningProfileService | None = None,
     ) -> None:
         self._runtime = runtime
         self._repositories = repositories
         self._max_input_chars = max_input_chars
         self._scheduler = scheduler
+        self._profile_service = profile_service
 
     async def submit_message(self, *, conversation_id: str, content: str) -> RunOutcome:
         """同步执行一次运行并返回最终结果（请求会等待运行结束）。"""
@@ -37,9 +40,16 @@ class ChatService:
         text = self._validate(content)
         await self._prepare(conversation_id, text)
         logger.info("message_submitted", extra={"extra_fields": {"chars": len(text)}})
-        return await self._runtime.run(
+        outcome = await self._runtime.run(
             conversation_id=conversation_id, user_message=text
         )
+        await self._record_profile(
+            conversation_id=conversation_id,
+            run_id=outcome.run_id,
+            text=text,
+            outcome=outcome,
+        )
+        return outcome
 
     async def start_run(self, *, conversation_id: str, content: str) -> str:
         """同步占位运行记录后转入后台执行，立即返回 ``run_id``。
@@ -59,13 +69,41 @@ class ChatService:
             extra={"extra_fields": {"chars": len(text), "mode": "async"}},
         )
         self._scheduler.schedule(
-            self._runtime.resume(
-                run_id=run_id,
-                conversation_id=conversation_id,
-                user_message=text,
+            self._resume_and_record(
+                conversation_id=conversation_id, run_id=run_id, text=text
             )
         )
         return run_id
+
+    async def _resume_and_record(
+        self, *, conversation_id: str, run_id: str, text: str
+    ) -> None:
+        outcome = await self._runtime.resume(
+            run_id=run_id, conversation_id=conversation_id, user_message=text
+        )
+        await self._record_profile(
+            conversation_id=conversation_id,
+            run_id=run_id,
+            text=text,
+            outcome=outcome,
+        )
+
+    async def _record_profile(
+        self,
+        *,
+        conversation_id: str,
+        run_id: str,
+        text: str,
+        outcome: RunOutcome,
+    ) -> None:
+        if self._profile_service is None or outcome.content is None:
+            return
+        await self._profile_service.record_completed_run(
+            conversation_id=conversation_id,
+            run_id=run_id,
+            user_message=text,
+            assistant_message=outcome.content,
+        )
 
     def _validate(self, content: str) -> str:
         text = (content or "").strip()

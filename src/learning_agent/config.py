@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     max_redirects: int = Field(default=5, ge=0, le=10)
     max_document_bytes: int = Field(default=2_000_000, ge=1_000, le=20_000_000)
     max_document_chars: int = Field(default=60_000, ge=1_000, le=1_000_000)
+    #: trusted_only = 必须命中 ALLOWED_DOCUMENT_HOSTS；open_public = 允许公网地址
+    manual_fetch_mode: str = "trusted_only"
 
     # ---------- 知识库（v2 M2） ----------
     knowledge_base_enabled: bool = True
@@ -74,6 +76,25 @@ class Settings(BaseSettings):
     ingestion_watch_timeout_s: float = Field(default=1800.0, gt=0, le=86_400)
     ingestion_max_active_watches: int = Field(default=20, ge=1, le=200)
     ingestion_watch_retention_days: int = Field(default=30, ge=1, le=365)
+
+    # ---------- V3 每日资讯 ----------
+    digest_enabled: bool = False
+    digest_trigger: str = "on_startup"
+    digest_timezone: str = "Asia/Shanghai"
+    digest_recheck_interval_s: int = Field(default=3600, ge=60, le=86_400)
+    digest_catch_up_days: int = Field(default=1, ge=0, le=7)
+    digest_top_n: int = Field(default=8, ge=1, le=30)
+    digest_max_age_days: int = Field(default=7, ge=1, le=90)
+    digest_source_concurrency: int = Field(default=4, ge=1, le=20)
+    digest_fetch_timeout_s: float = Field(default=15.0, gt=0, le=120)
+    digest_max_feed_bytes: int = Field(default=2_000_000, ge=1_000, le=20_000_000)
+    digest_seed_default_sources: bool = True
+    feishu_enabled: bool = False
+    feishu_webhook_url: str = ""
+    feishu_webhook_secret: str = ""
+
+    # ---------- V3 学习画像 ----------
+    learning_profile_enabled: bool = True
 
     # ---------- 单次 Run 限制 ----------
     run_timeout_seconds: float = Field(default=120.0, gt=0, le=1800)
@@ -122,6 +143,22 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_text(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("manual_fetch_mode")
+    @classmethod
+    def _validate_manual_fetch_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"trusted_only", "open_public"}:
+            raise ValueError("MANUAL_FETCH_MODE 必须是 trusted_only 或 open_public")
+        return normalized
+
+    @field_validator("digest_trigger")
+    @classmethod
+    def _validate_digest_trigger(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"on_startup", "manual"}:
+            raise ValueError("DIGEST_TRIGGER 必须是 on_startup 或 manual")
+        return normalized
 
     @property
     def allowed_hosts_set(self) -> frozenset[str]:

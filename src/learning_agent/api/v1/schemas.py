@@ -126,3 +126,59 @@ class RunStatsResponse(BaseModel):
     knowledge_tool_avg_ms: int | None = None
     ingestion_watch_backlog: int = 0
     error_codes: dict[str, int] = Field(default_factory=dict)
+
+
+class PushSourceResponse(BaseModel):
+    id: str
+    name: str
+    feed_url: str
+    domain: str
+    category: str
+    trust_level: str
+    enabled: bool
+
+
+class PushSourceCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    feed_url: str = Field(min_length=1, max_length=2048)
+    domain: str = Field(min_length=1, max_length=255)
+    category: str = Field(default="AI", max_length=64)
+
+
+class DigestItemResponse(BaseModel):
+    item_id: int
+    title: str
+    url: str
+    summary: str
+    topic: str
+    source_name: str
+    published_at: datetime | None = None
+    rank: int
+
+
+class DigestResponse(BaseModel):
+    digest_date: str
+    status: str
+    item_count: int
+    content: str
+    error_message: str | None = None
+    delivery_status: str | None = None
+    items: list[DigestItemResponse] = Field(default_factory=list)
+
+
+class LearningConceptResponse(BaseModel):
+    name: str
+    mastery: str
+    confidence: float
+    evidence_count: int
+
+
+class LearningTopicResponse(BaseModel):
+    name: str
+    status: str
+    last_seen_at: datetime
+    concepts: list[LearningConceptResponse] = Field(default_factory=list)
+
+
+class LearningProfileResponse(BaseModel):
+    topics: list[LearningTopicResponse] = Field(default_factory=list)

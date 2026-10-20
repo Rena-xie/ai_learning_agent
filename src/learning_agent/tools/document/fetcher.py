@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -47,6 +48,7 @@ class DocumentFetcher:
         max_redirects: int,
         transport: httpx.AsyncBaseTransport | None = None,
         verify_peer_address: bool = True,
+        allowed_content_types: Sequence[str] | None = None,
     ) -> None:
         self._policy = policy
         self._timeout_seconds = timeout_seconds
@@ -55,6 +57,9 @@ class DocumentFetcher:
         self._transport = transport
         # 连接建立后校验真实对端地址；只有本地可控测试服务器需要关闭
         self._verify_peer_address = verify_peer_address
+        self._allowed_content_types = tuple(
+            allowed_content_types or _HTML_CONTENT_TYPES
+        )
 
     async def fetch(self, url: str) -> FetchResult:
         target = self._policy.validate(url)
@@ -151,7 +156,9 @@ class DocumentFetcher:
         content_type = (
             response.headers.get("content-type", "").split(";")[0].strip().lower()
         )
-        if not any(content_type.startswith(item) for item in _HTML_CONTENT_TYPES):
+        if not any(
+            content_type.startswith(item) for item in self._allowed_content_types
+        ):
             raise DocumentToolError(
                 ErrorCode.UNSUPPORTED_CONTENT_TYPE,
                 f"暂不支持该类型的内容（{content_type or '未知类型'}），"

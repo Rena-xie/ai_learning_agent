@@ -52,6 +52,8 @@ class ErrorCode(StrEnum):
     KNOWLEDGE_BASE_REJECTED = "knowledge_base_rejected"
     KNOWLEDGE_BASE_BUSY = "knowledge_base_busy"
     INGESTION_NOT_FOUND = "ingestion_not_found"
+    DIGEST_UNAVAILABLE = "digest_unavailable"
+    LEARNING_PROFILE_UNAVAILABLE = "learning_profile_unavailable"
 
     MODEL_TIMEOUT = "model_timeout"
     MODEL_RATE_LIMITED = "model_rate_limited"
@@ -84,6 +86,8 @@ _ERROR_CATEGORY: dict[ErrorCode, ErrorCategory] = {
     ErrorCode.KNOWLEDGE_BASE_REJECTED: ErrorCategory.KNOWLEDGE_BASE,
     ErrorCode.KNOWLEDGE_BASE_BUSY: ErrorCategory.KNOWLEDGE_BASE,
     ErrorCode.INGESTION_NOT_FOUND: ErrorCategory.KNOWLEDGE_BASE,
+    ErrorCode.DIGEST_UNAVAILABLE: ErrorCategory.INTERNAL,
+    ErrorCode.LEARNING_PROFILE_UNAVAILABLE: ErrorCategory.INTERNAL,
     ErrorCode.MODEL_TIMEOUT: ErrorCategory.MODEL,
     ErrorCode.MODEL_RATE_LIMITED: ErrorCategory.MODEL,
     ErrorCode.MODEL_ERROR: ErrorCategory.MODEL,
@@ -114,6 +118,8 @@ _ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.KNOWLEDGE_BASE_REJECTED: 400,
     ErrorCode.KNOWLEDGE_BASE_BUSY: 429,
     ErrorCode.INGESTION_NOT_FOUND: 404,
+    ErrorCode.DIGEST_UNAVAILABLE: 503,
+    ErrorCode.LEARNING_PROFILE_UNAVAILABLE: 404,
     ErrorCode.MODEL_TIMEOUT: 504,
     ErrorCode.MODEL_RATE_LIMITED: 429,
     ErrorCode.MODEL_ERROR: 502,

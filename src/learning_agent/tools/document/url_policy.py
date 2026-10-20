@@ -4,8 +4,8 @@
 1. URL 结构：非空、无空白/控制字符、长度受限；
 2. 协议：仅 http / https；
 3. 凭据：拒绝 URL 中携带用户名或密码；
-4. 主机名：必须以精确主机名出现在 ``ALLOWED_DOCUMENT_HOSTS`` 中，
-   不接受隐式通配符，子域必须显式列出；
+4. 主机名：默认必须以精确主机名出现在 ``ALLOWED_DOCUMENT_HOSTS`` 中；
+   `allow_public_web=True` 时允许任意公网主机，但仍执行后续地址校验；
 5. 端口：必须属于允许端口集合；
 6. DNS 结果：必须解析成功，且所有解析结果都是公网地址
    （拒绝回环、私有、链路本地、多播、保留、未指定等）。
@@ -70,6 +70,8 @@ class UrlPolicy:
     """白名单式 URL 安全策略。"""
 
     allowed_hosts: frozenset[str]
+    #: True 时允许任意公网 HTTP(S) 主机（仍执行私网/端口/重定向校验）。
+    allow_public_web: bool = False
     allowed_ports: frozenset[int] = field(
         default_factory=lambda: frozenset(_DEFAULT_PORTS.values())
     )
@@ -111,12 +113,12 @@ class UrlPolicy:
             raise UrlPolicyError(ErrorCode.INVALID_REQUEST, "URL 缺少主机名")
 
         port = raw_port if raw_port is not None else _DEFAULT_PORTS[scheme]
-        if not self.allowed_hosts:
+        if not self.allowed_hosts and not self.allow_public_web:
             raise UrlPolicyError(
                 ErrorCode.URL_NOT_ALLOWED,
                 "未配置允许获取的文档域名，当前拒绝一切外部抓取",
             )
-        if host not in self.allowed_hosts:
+        if self.allowed_hosts and host not in self.allowed_hosts:
             raise UrlPolicyError(
                 ErrorCode.URL_NOT_ALLOWED, f"该域名不在允许获取的文档域名列表中：{host}"
             )
@@ -159,7 +161,8 @@ class UrlPolicy:
     def is_allowed_host(self, host: str) -> bool:
         """精确主机名匹配（无隐式通配符）。"""
 
-        return host.strip().lower().rstrip(".") in self.allowed_hosts
+        normalized = host.strip().lower().rstrip(".")
+        return self.allow_public_web or normalized in self.allowed_hosts
 
     def _resolve(self, host: str, port: int) -> Sequence[str]:
         try:
