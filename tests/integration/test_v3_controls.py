@@ -115,9 +115,30 @@ def test_v31_control_flow(tmp_path) -> None:
         )
         assert preferences.status_code == 200
         assert preferences.json()["topics"] == ["Agent"]
+        assert source["last_checked_at"] is None
+
+        disabled_source = client.patch(
+            f"/api/v1/push/sources/{source['id']}",
+            json={"enabled": False},
+        )
+        assert disabled_source.status_code == 200
+        assert disabled_source.json()["enabled"] is False
+        reenabled_source = client.patch(
+            f"/api/v1/push/sources/{source['id']}",
+            json={"enabled": True},
+        )
+        assert reenabled_source.json()["enabled"] is True
+        missing_source = client.patch(
+            "/api/v1/push/sources/not-found",
+            json={"enabled": False},
+        )
+        assert missing_source.status_code == 404
 
         digest = client.post("/api/v1/digests/run").json()
         item_id = digest["items"][0]["item_id"]
+        checked_source = client.get("/api/v1/push/sources").json()[0]
+        assert checked_source["last_checked_at"] is not None
+        assert checked_source["last_error"] is None
         feedback = client.post(
             "/api/v1/digests/2026-10-20/feedback",
             json={"item_id": item_id, "action": "useful"},

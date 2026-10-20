@@ -10,6 +10,7 @@ from fastapi import APIRouter, Request
 from learning_agent.api.v1.schemas import (
     PushSourceCreateRequest,
     PushSourceResponse,
+    PushSourceUpdateRequest,
 )
 from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.persistence.v3_store import SourceRecord, V3Store
@@ -51,6 +52,18 @@ async def add_source(
     return _source_response(record)
 
 
+@router.patch("/{source_id}", response_model=PushSourceResponse)
+async def update_source(
+    source_id: str,
+    payload: PushSourceUpdateRequest,
+    request: Request,
+) -> PushSourceResponse:
+    record = _store(request).set_source_enabled(
+        source_id, enabled=payload.enabled
+    )
+    return _source_response(record)
+
+
 def _source_response(record: SourceRecord) -> PushSourceResponse:
     return PushSourceResponse(
         id=record.id,
@@ -59,5 +72,9 @@ def _source_response(record: SourceRecord) -> PushSourceResponse:
         domain=record.domain,
         category=record.category,
         trust_level=record.trust_level,
+        auto_push=record.auto_push,
+        auto_ingest=record.auto_ingest,
         enabled=record.enabled,
+        last_checked_at=record.last_checked_at,
+        last_error=record.last_error,
     )

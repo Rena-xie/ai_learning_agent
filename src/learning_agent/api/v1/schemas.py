@@ -136,7 +136,11 @@ class PushSourceResponse(BaseModel):
     domain: str
     category: str
     trust_level: str
+    auto_push: bool
+    auto_ingest: bool
     enabled: bool
+    last_checked_at: datetime | None = None
+    last_error: str | None = None
 
 
 class PushSourceCreateRequest(BaseModel):
@@ -144,6 +148,10 @@ class PushSourceCreateRequest(BaseModel):
     feed_url: str = Field(min_length=1, max_length=2048)
     domain: str = Field(min_length=1, max_length=255)
     category: str = Field(default="AI", max_length=64)
+
+
+class PushSourceUpdateRequest(BaseModel):
+    enabled: bool
 
 
 class PushPreferencesResponse(BaseModel):

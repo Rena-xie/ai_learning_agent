@@ -187,6 +187,15 @@ class V3Store:
             session.flush()
             return _to_source(source)
 
+    def set_source_enabled(self, source_id: str, *, enabled: bool) -> SourceRecord:
+        with self._session() as session:
+            source = session.get(PushSource, source_id)
+            if source is None:
+                raise AppError(ErrorCode.NOT_FOUND, "资讯来源不存在")
+            source.enabled = enabled
+            session.flush()
+            return _to_source(source)
+
     def mark_source_checked(
         self,
         source_id: str,
