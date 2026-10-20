@@ -15,6 +15,7 @@ from learning_agent.observability.logging import get_logger
 from learning_agent.persistence.v3_store import (
     DigestItemRecord,
     DigestRecord,
+    PushPreferenceRecord,
     SourceRecord,
     V3Store,
 )
@@ -66,30 +67,30 @@ class DailyDigestService:
     async def run_today(self, *, force: bool = False) -> DigestResult:
         async with self._lock:
             date = self.today()
-            existing = self._store.get_digest(date)
-            if (
-                existing is not None
-                and existing.status in {"queued", "running", "completed"}
-                and not force
-            ):
-                return self._view(existing)
+            preferences = self._preferences()
+            return await self._run_date(date, force=force, preferences=preferences)
 
-            digest = self._store.create_digest(date)
-            if digest.status in {"running", "completed"} and not force:
-                return self._view(digest)
-            self._store.start_digest(digest.id)
+    async def run_due(self) -> DigestResult:
+        """依次处理补发窗口内未完成的 Digest，返回最新一天的结果。"""
+
+        async with self._lock:
+            preferences = self._preferences()
+            now = self._now or datetime.now(UTC)
             try:
-                return await self._generate(digest)
-            except Exception as exc:  # noqa: BLE001 - Digest 失败要落库并返回
-                logger.exception(
-                    "daily_digest_failed",
-                    extra={"extra_fields": {"date": date}},
+                local_date = now.astimezone(
+                    ZoneInfo(self._settings.digest_timezone)
+                ).date()
+            except Exception:
+                local_date = now.date()
+            result: DigestResult | None = None
+            for offset in range(preferences.catch_up_days, -1, -1):
+                date = (local_date - timedelta(days=offset)).isoformat()
+                result = await self._run_date(
+                    date, force=False, preferences=preferences
                 )
-                self._store.fail_digest(digest.id, f"{type(exc).__name__}: {exc}")
-                failed = self._store.get_digest(date)
-                if failed is None:
-                    raise
-                return self._view(failed)
+            if result is None:
+                raise RuntimeError("没有可执行的 Digest 日期")
+            return result
 
     def get_today(self) -> DigestResult | None:
         record = self._store.get_digest(self.today())
@@ -99,17 +100,74 @@ class DailyDigestService:
         record = self._store.get_digest(date)
         return self._view(record) if record else None
 
-    async def _generate(self, digest: DigestRecord) -> DigestResult:
-        current = self._now or datetime.now(UTC)
+    def _preferences(self) -> PushPreferenceRecord:
+        return self._store.get_push_preferences(
+            default_top_n=self._settings.digest_top_n,
+            default_catch_up_days=self._settings.digest_catch_up_days,
+        )
+
+    async def _run_date(
+        self,
+        date: str,
+        *,
+        force: bool,
+        preferences: PushPreferenceRecord,
+    ) -> DigestResult:
+        existing = self._store.get_digest(date)
+        if existing is not None and not force:
+            delivery = self._store.get_delivery(existing.id)
+            delivery_complete = delivery is None or delivery.status in {
+                "delivered",
+                "disabled",
+            }
+            if existing.status == "completed" and delivery_complete:
+                return self._view(existing)
+            if existing.status == "completed":
+                return await self._deliver(
+                    existing, existing.content, existing.item_count
+                )
+
+        digest = self._store.create_digest(date)
+        self._store.start_digest(digest.id)
+        try:
+            return await self._generate(digest, preferences=preferences)
+        except Exception as exc:  # noqa: BLE001 - Digest 失败要落库并返回
+            logger.exception(
+                "daily_digest_failed",
+                extra={"extra_fields": {"date": date}},
+            )
+            self._store.fail_digest(digest.id, f"{type(exc).__name__}: {exc}")
+            failed = self._store.get_digest(date)
+            if failed is None:
+                raise
+            return self._view(failed)
+
+    async def _generate(
+        self, digest: DigestRecord, *, preferences: PushPreferenceRecord
+    ) -> DigestResult:
         sources = self._store.list_sources(enabled_only=True)
+        sources = [
+            source
+            for source in sources
+            if source.auto_push
+            and (not preferences.source_ids or source.id in preferences.source_ids)
+            and (
+                not preferences.topics
+                or source.category.casefold()
+                in {topic.casefold() for topic in preferences.topics}
+            )
+        ]
         if not sources:
             content = (
                 f"# AI 日报 {digest.digest_date}\n\n"
-                "今天还没有启用任何资讯来源。请先配置来源或添加 RSS/Atom。"
+                "当前偏好下没有启用的资讯来源。请调整主题、来源或添加 RSS/Atom。"
             )
             self._store.complete_digest(
                 digest.id, content=content, item_count=0, items=[]
             )
+            if digest.digest_date != self.today():
+                completed = self._store.get_digest(digest.digest_date)
+                return self._view(completed or digest)
             return await self._deliver(digest, content, 0)
 
         semaphore = asyncio.Semaphore(self._settings.digest_source_concurrency)
@@ -148,10 +206,10 @@ class DailyDigestService:
                 xml or "", feed_url=source.feed_url, source_topic=source.category
             )
             for entry in entries:
-                if not _is_recent(
+                if not _matches_digest_date(
                     entry.published_at,
-                    now=current,
-                    days=self._settings.digest_max_age_days,
+                    digest_date=digest.digest_date,
+                    timezone=self._settings.digest_timezone,
                 ):
                     continue
                 item_id, _created = self._store.upsert_item(
@@ -169,7 +227,7 @@ class DailyDigestService:
                 candidates.append(_Candidate(item_id, source, entry))
 
         candidates.sort(key=_candidate_sort_key, reverse=True)
-        selected = _limit_per_source(candidates, self._settings.digest_top_n, 3)
+        selected = _limit_per_source(candidates, preferences.top_n, 3)
         content = _render_digest(
             digest.digest_date, selected, failed_sources=failed_sources
         )
@@ -180,6 +238,9 @@ class DailyDigestService:
         self._store.complete_digest(
             digest.id, content=content, item_count=len(items), items=items
         )
+        if digest.digest_date != self.today() and not items:
+            completed = self._store.get_digest(digest.digest_date)
+            return self._view(completed or digest)
         return await self._deliver(digest, content, len(items))
 
     async def _deliver(
@@ -207,16 +268,24 @@ class DailyDigestService:
         )
 
     def _view(self, record: DigestRecord) -> DigestResult:
+        delivery = self._store.get_delivery(record.id)
         return DigestResult(
             digest=record,
             items=tuple(self._store.list_digest_items(record.id)),
+            delivery_status=delivery.status if delivery else None,
         )
 
 
-def _is_recent(value: datetime | None, *, now: datetime, days: int) -> bool:
+def _matches_digest_date(
+    value: datetime | None, *, digest_date: str, timezone: str
+) -> bool:
     if value is None:
         return True
-    return value >= now - timedelta(days=days)
+    try:
+        local = value.astimezone(ZoneInfo(timezone))
+    except Exception:
+        local = value
+    return local.date().isoformat() == digest_date
 
 
 def _summary(candidate: _Candidate) -> str:

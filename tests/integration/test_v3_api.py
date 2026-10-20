@@ -89,4 +89,4 @@ def test_v3_digest_and_profile_api(tmp_path) -> None:
 
         profile = client.get("/api/v1/learning-profile")
         assert profile.status_code == 200
-        assert profile.json() == {"topics": []}
+    assert profile.json() == {"enabled": True, "topics": []}

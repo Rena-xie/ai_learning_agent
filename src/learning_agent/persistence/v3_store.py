@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -16,11 +17,15 @@ from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.persistence.models import (
     LearningConcept,
     LearningEvent,
+    LearningProfileSetting,
     LearningTopic,
     PushDelivery,
     PushDigest,
     PushDigestItem,
+    PushFeedback,
     PushItem,
+    PushItemIngestion,
+    PushPreference,
     PushSource,
     utcnow,
 )
@@ -66,6 +71,35 @@ class DigestItemRecord:
     source_name: str
     published_at: datetime | None
     rank: int
+    feedback_action: str | None = None
+    ingestion_job_id: str | None = None
+    ingestion_status: str | None = None
+
+
+@dataclass(frozen=True)
+class DeliveryRecord:
+    digest_id: int
+    channel: str
+    status: str
+    attempts: int
+    last_error: str | None
+    delivered_at: datetime | None
+
+
+@dataclass(frozen=True)
+class PushPreferenceRecord:
+    topics: tuple[str, ...]
+    source_ids: tuple[str, ...]
+    top_n: int
+    catch_up_days: int
+
+
+@dataclass(frozen=True)
+class IngestionLinkRecord:
+    item_id: int
+    job_id: str
+    status: str
+    error_message: str | None
 
 
 @dataclass(frozen=True)
@@ -169,6 +203,56 @@ class V3Store:
             source.etag = etag
             source.last_modified = last_modified
             source.last_error = last_error[:1000] if last_error else None
+
+    # ---------- 用户偏好 ----------
+
+    def get_push_preferences(
+        self, *, default_top_n: int, default_catch_up_days: int
+    ) -> PushPreferenceRecord:
+        with self._session() as session:
+            row = session.get(PushPreference, 1)
+            if row is None:
+                return PushPreferenceRecord(
+                    topics=(),
+                    source_ids=(),
+                    top_n=default_top_n,
+                    catch_up_days=default_catch_up_days,
+                )
+            return PushPreferenceRecord(
+                topics=tuple(_load_string_list(row.topics_json)),
+                source_ids=tuple(_load_string_list(row.source_ids_json)),
+                top_n=row.top_n,
+                catch_up_days=row.catch_up_days,
+            )
+
+    def save_push_preferences(
+        self,
+        *,
+        topics: Sequence[str],
+        source_ids: Sequence[str],
+        top_n: int,
+        catch_up_days: int,
+    ) -> PushPreferenceRecord:
+        with self._session() as session:
+            row = session.get(PushPreference, 1)
+            if row is None:
+                row = PushPreference(id=1)
+                session.add(row)
+            row.topics_json = json.dumps(
+                list(dict.fromkeys(topics)), ensure_ascii=False
+            )
+            row.source_ids_json = json.dumps(
+                list(dict.fromkeys(source_ids)), ensure_ascii=False
+            )
+            row.top_n = top_n
+            row.catch_up_days = catch_up_days
+            session.flush()
+            return PushPreferenceRecord(
+                topics=tuple(_load_string_list(row.topics_json)),
+                source_ids=tuple(_load_string_list(row.source_ids_json)),
+                top_n=row.top_n,
+                catch_up_days=row.catch_up_days,
+            )
 
     # ---------- Digest ----------
 
@@ -285,9 +369,26 @@ class V3Store:
     def list_digest_items(self, digest_id: int) -> list[DigestItemRecord]:
         with self._session() as session:
             rows = session.execute(
-                select(PushDigestItem, PushItem, PushSource)
+                select(
+                    PushDigestItem,
+                    PushItem,
+                    PushSource,
+                    PushFeedback,
+                    PushItemIngestion,
+                )
                 .join(PushItem, PushDigestItem.item_id == PushItem.id)
                 .join(PushSource, PushItem.source_id == PushSource.id)
+                .outerjoin(
+                    PushFeedback,
+                    and_(
+                        PushFeedback.item_id == PushItem.id,
+                        PushFeedback.action.in_(("useful", "not_useful")),
+                    ),
+                )
+                .outerjoin(
+                    PushItemIngestion,
+                    PushItemIngestion.item_id == PushItem.id,
+                )
                 .where(PushDigestItem.digest_id == digest_id)
                 .order_by(PushDigestItem.rank)
             ).all()
@@ -301,9 +402,75 @@ class V3Store:
                     source_name=source.name,
                     published_at=item.published_at,
                     rank=link.rank,
+                    feedback_action=feedback.action if feedback else None,
+                    ingestion_job_id=ingestion.job_id if ingestion else None,
+                    ingestion_status=ingestion.status if ingestion else None,
                 )
-                for link, item, source in rows
+                for link, item, source, feedback, ingestion in rows
             ]
+
+    def get_digest_item(
+        self, *, digest_date: str, item_id: int
+    ) -> DigestItemRecord | None:
+        with self._session() as session:
+            digest = session.scalar(
+                select(PushDigest).where(PushDigest.digest_date == digest_date)
+            )
+            if digest is None:
+                return None
+            row = session.execute(
+                select(PushDigestItem, PushItem, PushSource)
+                .join(PushItem, PushDigestItem.item_id == PushItem.id)
+                .join(PushSource, PushItem.source_id == PushSource.id)
+                .where(
+                    PushDigestItem.digest_id == digest.id,
+                    PushDigestItem.item_id == item_id,
+                )
+            ).first()
+            if row is None:
+                return None
+            link, item, source = row
+            return DigestItemRecord(
+                item_id=item.id,
+                title=item.title,
+                url=item.canonical_url,
+                summary=link.summary,
+                topic=item.topic,
+                source_name=source.name,
+                published_at=item.published_at,
+                rank=link.rank,
+            )
+
+    def save_feedback(self, *, item_id: int, action: str) -> None:
+        with self._session() as session:
+            session.execute(
+                delete(PushFeedback).where(
+                    PushFeedback.item_id == item_id,
+                    PushFeedback.action.in_(("useful", "not_useful")),
+                )
+            )
+            session.add(PushFeedback(item_id=item_id, action=action))
+
+    def get_delivery(
+        self, digest_id: int, *, channel: str = "feishu"
+    ) -> DeliveryRecord | None:
+        with self._session() as session:
+            row = session.scalar(
+                select(PushDelivery).where(
+                    PushDelivery.digest_id == digest_id,
+                    PushDelivery.channel == channel,
+                )
+            )
+            if row is None:
+                return None
+            return DeliveryRecord(
+                digest_id=row.digest_id,
+                channel=row.channel,
+                status=row.status,
+                attempts=row.attempts,
+                last_error=row.last_error,
+                delivered_at=row.delivered_at,
+            )
 
     def save_delivery(
         self,
@@ -329,6 +496,42 @@ class V3Store:
             row.attempts = attempts
             row.last_error = error[:2000] if error else None
             row.delivered_at = delivered_at
+
+    def get_ingestion_link(self, item_id: int) -> IngestionLinkRecord | None:
+        with self._session() as session:
+            row = session.get(PushItemIngestion, item_id)
+            if row is None:
+                return None
+            return IngestionLinkRecord(
+                item_id=row.item_id,
+                job_id=row.job_id,
+                status=row.status,
+                error_message=row.error_message,
+            )
+
+    def save_ingestion_link(
+        self,
+        *,
+        item_id: int,
+        job_id: str,
+        status: str,
+        error_message: str | None = None,
+    ) -> IngestionLinkRecord:
+        with self._session() as session:
+            row = session.get(PushItemIngestion, item_id)
+            if row is None:
+                row = PushItemIngestion(item_id=item_id)
+                session.add(row)
+            row.job_id = job_id
+            row.status = status
+            row.error_message = error_message[:2000] if error_message else None
+            session.flush()
+            return IngestionLinkRecord(
+                item_id=row.item_id,
+                job_id=row.job_id,
+                status=row.status,
+                error_message=row.error_message,
+            )
 
     # ---------- 学习画像 ----------
 
@@ -377,7 +580,7 @@ class V3Store:
                     concept.evidence_count += 1
                     concept.confidence = min(1.0, max(concept.confidence, confidence))
                     concept.last_seen_at = now
-                    if event_type == "weak_signal":
+                    if event_type == "weak_signal" and not concept.user_corrected:
                         concept.mastery = "weak"
             session.add(
                 LearningEvent(
@@ -405,15 +608,18 @@ class V3Store:
                 ).all()
                 payload.append(
                     {
+                        "id": topic.id,
                         "name": topic.name,
                         "status": topic.status,
                         "last_seen_at": topic.last_seen_at,
                         "concepts": [
                             {
+                                "id": concept.id,
                                 "name": concept.name,
                                 "mastery": concept.mastery,
                                 "confidence": concept.confidence,
                                 "evidence_count": concept.evidence_count,
+                                "user_corrected": concept.user_corrected,
                             }
                             for concept in concepts
                         ],
@@ -426,6 +632,44 @@ class V3Store:
             session.execute(delete(LearningEvent))
             session.execute(delete(LearningConcept))
             session.execute(delete(LearningTopic))
+
+    def learning_profile_enabled(self, *, default: bool = True) -> bool:
+        with self._session() as session:
+            row = session.get(LearningProfileSetting, 1)
+            return default if row is None else bool(row.enabled)
+
+    def set_learning_profile_enabled(self, *, enabled: bool) -> bool:
+        with self._session() as session:
+            row = session.get(LearningProfileSetting, 1)
+            if row is None:
+                row = LearningProfileSetting(id=1, enabled=enabled)
+                session.add(row)
+            else:
+                row.enabled = enabled
+            session.flush()
+            return bool(row.enabled)
+
+    def update_learning_topic_status(self, topic_id: int, *, status: str) -> None:
+        with self._session() as session:
+            row = session.get(LearningTopic, topic_id)
+            if row is None:
+                raise AppError(ErrorCode.NOT_FOUND, "学习主题不存在")
+            row.status = status
+
+    def delete_learning_topic(self, topic_id: int) -> None:
+        with self._session() as session:
+            row = session.get(LearningTopic, topic_id)
+            if row is None:
+                raise AppError(ErrorCode.NOT_FOUND, "学习主题不存在")
+            session.delete(row)
+
+    def update_learning_concept_mastery(self, concept_id: int, *, mastery: str) -> None:
+        with self._session() as session:
+            row = session.get(LearningConcept, concept_id)
+            if row is None:
+                raise AppError(ErrorCode.NOT_FOUND, "学习概念不存在")
+            row.mastery = mastery
+            row.user_corrected = True
 
 
 def _to_source(row: PushSource) -> SourceRecord:
@@ -458,3 +702,13 @@ def _to_digest(row: PushDigest) -> DigestRecord:
         started_at=row.started_at,
         completed_at=row.completed_at,
     )
+
+
+def _load_string_list(value: str) -> list[str]:
+    try:
+        payload = json.loads(value)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item.strip() for item in payload if isinstance(item, str) and item.strip()]

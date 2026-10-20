@@ -21,6 +21,7 @@ from learning_agent.api.v1.routes import (
     health,
     learning_profile,
     messages,
+    push_preferences,
     push_sources,
     runs,
     stats,
@@ -274,6 +275,7 @@ def create_app(
     app.include_router(stats.router)
     app.include_router(digests.router)
     app.include_router(push_sources.router)
+    app.include_router(push_preferences.router)
     app.include_router(learning_profile.router)
     if _WEB_DIR.is_dir():
         # 静态界面挂在最后，保证 /api 与 /health 路由优先匹配

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -145,6 +146,20 @@ class PushSourceCreateRequest(BaseModel):
     category: str = Field(default="AI", max_length=64)
 
 
+class PushPreferencesResponse(BaseModel):
+    topics: list[str] = Field(default_factory=list)
+    source_ids: list[str] = Field(default_factory=list)
+    top_n: int
+    catch_up_days: int
+
+
+class PushPreferencesUpdateRequest(BaseModel):
+    topics: list[str] | None = Field(default=None, max_length=20)
+    source_ids: list[str] | None = Field(default=None, max_length=100)
+    top_n: int | None = Field(default=None, ge=1, le=30)
+    catch_up_days: int | None = Field(default=None, ge=0, le=7)
+
+
 class DigestItemResponse(BaseModel):
     item_id: int
     title: str
@@ -154,6 +169,9 @@ class DigestItemResponse(BaseModel):
     source_name: str
     published_at: datetime | None = None
     rank: int
+    feedback_action: str | None = None
+    ingestion_job_id: str | None = None
+    ingestion_status: str | None = None
 
 
 class DigestResponse(BaseModel):
@@ -166,14 +184,35 @@ class DigestResponse(BaseModel):
     items: list[DigestItemResponse] = Field(default_factory=list)
 
 
+class DigestFeedbackRequest(BaseModel):
+    item_id: int = Field(gt=0)
+    action: Literal["useful", "not_useful"]
+
+
+class DigestFeedbackResponse(BaseModel):
+    item_id: int
+    action: str
+
+
+class DigestIngestionResponse(BaseModel):
+    item_id: int
+    url: str
+    job_id: str
+    status: str
+    error_message: str | None = None
+
+
 class LearningConceptResponse(BaseModel):
+    id: int
     name: str
     mastery: str
     confidence: float
     evidence_count: int
+    user_corrected: bool
 
 
 class LearningTopicResponse(BaseModel):
+    id: int
     name: str
     status: str
     last_seen_at: datetime
@@ -181,4 +220,21 @@ class LearningTopicResponse(BaseModel):
 
 
 class LearningProfileResponse(BaseModel):
+    enabled: bool
     topics: list[LearningTopicResponse] = Field(default_factory=list)
+
+
+class LearningProfileSettingsRequest(BaseModel):
+    enabled: bool
+
+
+class LearningProfileSettingsResponse(BaseModel):
+    enabled: bool
+
+
+class LearningTopicUpdateRequest(BaseModel):
+    status: Literal["learning", "paused", "completed"]
+
+
+class LearningConceptUpdateRequest(BaseModel):
+    mastery: Literal["weak", "learning", "strong"]

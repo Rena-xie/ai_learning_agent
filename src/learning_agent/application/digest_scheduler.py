@@ -49,7 +49,7 @@ class DigestScheduler:
     async def _run(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
             try:
-                result = await self._service.run_today()
+                result = await self._service.run_due()
                 logger.info(
                     "daily_digest_check_finished",
                     extra={

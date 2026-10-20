@@ -63,7 +63,7 @@ class LearningProfileService:
         user_message: str,
         assistant_message: str,
     ) -> None:
-        if not self._enabled:
+        if not self.is_enabled():
             return
         try:
             self._record(
@@ -84,7 +84,7 @@ class LearningProfileService:
         assistant_message: str,
     ) -> None:
         text = f"{user_message}\n{assistant_message}".casefold()
-        weak = bool(_WEAK_PATTERN.search(text))
+        weak = bool(_WEAK_PATTERN.search(user_message.casefold()))
         matched_topics = [
             topic
             for topic, keywords in _TOPIC_KEYWORDS.items()
@@ -120,6 +120,23 @@ class LearningProfileService:
 
     def snapshot(self) -> LearningProfileSnapshot:
         return self._store.learning_profile()
+
+    def is_enabled(self) -> bool:
+        return self._enabled and self._store.learning_profile_enabled()
+
+    def set_enabled(self, *, enabled: bool) -> bool:
+        if not self._enabled:
+            return False
+        return self._store.set_learning_profile_enabled(enabled=enabled)
+
+    def update_topic_status(self, topic_id: int, *, status: str) -> None:
+        self._store.update_learning_topic_status(topic_id, status=status)
+
+    def delete_topic(self, topic_id: int) -> None:
+        self._store.delete_learning_topic(topic_id)
+
+    def update_concept_mastery(self, concept_id: int, *, mastery: str) -> None:
+        self._store.update_learning_concept_mastery(concept_id, mastery=mastery)
 
     def clear(self) -> None:
         self._store.clear_profile()

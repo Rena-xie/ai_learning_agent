@@ -350,6 +350,69 @@ class PushDelivery(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
+class PushPreference(Base):
+    """单用户资讯偏好；列表以 JSON 文本保存，便于后续扩展字段。"""
+
+    __tablename__ = "push_preferences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    topics_json: Mapped[str] = mapped_column(Text, default="[]")
+    source_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    top_n: Mapped[int] = mapped_column(Integer, default=8)
+    catch_up_days: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime, default=utcnow, onupdate=utcnow
+    )
+
+
+class PushFeedback(Base):
+    """用户对单条资讯的反馈。"""
+
+    __tablename__ = "push_feedback"
+    __table_args__ = (
+        UniqueConstraint("item_id", "action", name="uq_push_feedback_item_action"),
+        Index("ix_push_feedback_item", "item_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("push_items.id", ondelete="CASCADE"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class PushItemIngestion(Base):
+    """Digest 条目收藏到 RAG 的异步任务记录。"""
+
+    __tablename__ = "push_item_ingestions"
+
+    item_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("push_items.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    job_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime, default=utcnow, onupdate=utcnow
+    )
+
+
+class LearningProfileSetting(Base):
+    """学习画像的用户开关。"""
+
+    __tablename__ = "learning_profile_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime, default=utcnow, onupdate=utcnow
+    )
+
+
 class LearningTopic(Base):
     """跨对话学习主题。"""
 
@@ -383,6 +446,7 @@ class LearningConcept(Base):
     mastery: Mapped[str] = mapped_column(String(16), default="learning")
     confidence: Mapped[float] = mapped_column(Float, default=0.5)
     evidence_count: Mapped[int] = mapped_column(Integer, default=0)
+    user_corrected: Mapped[bool] = mapped_column(Boolean, default=False)
     last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(

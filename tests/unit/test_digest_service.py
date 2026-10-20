@@ -23,6 +23,21 @@ _RSS = """<rss version="2.0"><channel>
 </item>
 </channel></rss>"""
 
+_CATCH_UP_RSS = """<rss version="2.0"><channel>
+<item>
+  <title>昨天的 Agent 更新</title>
+  <link>https://example.com/agent-yesterday</link>
+  <description>昨天发布。</description>
+  <pubDate>Mon, 19 Oct 2026 09:00:00 GMT</pubDate>
+</item>
+<item>
+  <title>今天的 RAG 更新</title>
+  <link>https://example.com/rag-today</link>
+  <description>今天发布。</description>
+  <pubDate>Tue, 20 Oct 2026 09:00:00 GMT</pubDate>
+</item>
+</channel></rss>"""
+
 
 class FakeFeedFetcher:
     async def fetch(self, feed_url: str, *, allowed_domains: tuple[str, ...]) -> str:
@@ -38,6 +53,28 @@ class FakeNotifier:
     async def send(self, text: str) -> FeishuResult:
         self.calls.append(text)
         return FeishuResult(status="delivered", attempts=1)
+
+
+class FlakyNotifier:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def send(self, _text: str) -> FeishuResult:
+        self.calls += 1
+        if self.calls == 1:
+            return FeishuResult(
+                status="failed",
+                attempts=1,
+                error="temporary failure",
+            )
+        return FeishuResult(status="delivered", attempts=1)
+
+
+class CatchUpFeedFetcher(FakeFeedFetcher):
+    async def fetch(self, feed_url: str, *, allowed_domains: tuple[str, ...]) -> str:
+        assert feed_url == "https://example.com/feed.xml"
+        assert allowed_domains == ("example.com",)
+        return _CATCH_UP_RSS
 
 
 def build_settings(database_url: str) -> Settings:
@@ -93,3 +130,52 @@ async def test_generates_and_delivers_digest_once(store: tuple[V3Store, str]) ->
     assert first.delivery_status == "delivered"
     assert second.digest.status == "completed"
     assert len(notifier.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_retries_failed_delivery_without_regenerating(
+    store: tuple[V3Store, str],
+) -> None:
+    v3_store, database_url = store
+    notifier = FlakyNotifier()
+    service = DailyDigestService(
+        settings=build_settings(database_url),
+        store=v3_store,
+        feed_fetcher=FakeFeedFetcher(),  # type: ignore[arg-type]
+        notifier=notifier,  # type: ignore[arg-type]
+        now=datetime(2026, 10, 20, 8, tzinfo=UTC),
+    )
+
+    first = await service.run_today()
+    second = await service.run_today()
+
+    assert first.delivery_status == "failed"
+    assert second.delivery_status == "delivered"
+    assert notifier.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_run_due_catches_up_yesterday_and_today(
+    store: tuple[V3Store, str],
+) -> None:
+    v3_store, database_url = store
+    v3_store.save_push_preferences(
+        topics=(),
+        source_ids=(),
+        top_n=3,
+        catch_up_days=1,
+    )
+    notifier = FakeNotifier()
+    service = DailyDigestService(
+        settings=build_settings(database_url),
+        store=v3_store,
+        feed_fetcher=CatchUpFeedFetcher(),  # type: ignore[arg-type]
+        notifier=notifier,  # type: ignore[arg-type]
+        now=datetime(2026, 10, 20, 8, tzinfo=UTC),
+    )
+
+    result = await service.run_due()
+
+    assert result.digest.digest_date == "2026-10-20"
+    assert result.items[0].title == "今天的 RAG 更新"
+    assert len(notifier.calls) == 2
