@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from tests.support.local_doc_server import TEST_HOST, stub_resolver
 from tests.support.scripted_model import (
     ScriptedModelClient,
     final_response,
@@ -23,7 +24,7 @@ def make_settings(tmp_path: Path, *, enabled: bool = True) -> Settings:
         model_name="test-model",
         model_base_url="https://api.example.com/v1",
         database_url=f"sqlite:///{(tmp_path / 'agent.db').as_posix()}",
-        allowed_document_hosts=(),
+        allowed_document_hosts=(TEST_HOST,),
         log_level="WARNING",
         knowledge_base_enabled=enabled,
         max_tool_calls=5,
@@ -104,7 +105,9 @@ async def test_agent_starts_ingestion_without_claiming_completion(
     knowledge = FakeKnowledgeClient()
     model = ScriptedModelClient(
         [
-            tool_call_response(("ingest_urls", '{"urls": ["https://example.com/a"]}')),
+            tool_call_response(
+                ("ingest_urls", '{"urls": ["https://docs.example.com/a"]}')
+            ),
             final_response("已开始入库，任务编号 job_test_1。完成后会自动通知。"),
             tool_call_response(("search_knowledge", '{"question": "BM25 是什么？"}')),
             final_response("BM25 是一种稀疏检索算法 [S1]。"),
@@ -114,6 +117,7 @@ async def test_agent_starts_ingestion_without_claiming_completion(
         make_settings(tmp_path),
         model_client=model,
         knowledge_client=knowledge,
+        document_resolver=stub_resolver(),
     )
 
     async with app.router.lifespan_context(app):
@@ -128,7 +132,7 @@ async def test_agent_starts_ingestion_without_claiming_completion(
 
             response = await client.post(
                 f"/api/v1/conversations/{conversation_id}/messages",
-                json={"content": "把 https://example.com/a 存进知识库"},
+                json={"content": "把 https://docs.example.com/a 存进知识库"},
             )
 
             assert response.status_code == 201, response.text
@@ -185,7 +189,7 @@ async def test_agent_starts_ingestion_without_claiming_completion(
             assert answer_run["prompt_version"] == "v3"
             assert answer_run["tool_calls"][0]["tool_name"] == "search_knowledge"
 
-    assert ("create", ["https://example.com/a"]) in knowledge.calls
+    assert ("create", ["https://docs.example.com/a"]) in knowledge.calls
     assert knowledge.closed is True
 
 
@@ -193,6 +197,7 @@ async def test_knowledge_tools_can_be_disabled(tmp_path: Path) -> None:
     app = create_app(
         make_settings(tmp_path, enabled=False),
         model_client=ScriptedModelClient([]),
+        document_resolver=stub_resolver(),
     )
 
     async with app.router.lifespan_context(app):
@@ -206,6 +211,7 @@ async def test_knowledge_tools_are_registered_when_enabled(
         make_settings(tmp_path),
         model_client=ScriptedModelClient([]),
         knowledge_client=FakeKnowledgeClient(),
+        document_resolver=stub_resolver(),
     )
 
     async with app.router.lifespan_context(app):

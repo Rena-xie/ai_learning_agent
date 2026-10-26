@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -11,7 +12,8 @@ from pydantic import BaseModel, Field
 
 from learning_agent.domain.contracts import ToolContext
 from learning_agent.domain.entities import DocumentContent, ToolOutcome, ToolSource
-from learning_agent.domain.errors import AppError, ErrorCode
+from learning_agent.domain.errors import AppError, ErrorCode, UrlPolicyError
+from learning_agent.tools.document.url_policy import UrlPolicy
 from learning_agent.tools.knowledge.client import KnowledgeBasePort
 
 logger = logging.getLogger(__name__)
@@ -19,6 +21,41 @@ logger = logging.getLogger(__name__)
 _MAX_ITEMS = 5
 _MAX_URL_CHARS = 2_048
 _TERMINAL_STATUSES = frozenset({"completed", "partial", "failed"})
+_INGEST_INTENT_MARKERS = (
+    "存进知识库",
+    "存到知识库",
+    "保存到知识库",
+    "保存进知识库",
+    "加入知识库",
+    "添加到知识库",
+    "记住这个链接",
+    "记住这些链接",
+    "记一下这个链接",
+    "记一下这些链接",
+)
+_INGEST_REQUEST_PATTERN = re.compile(
+    r"(请|帮我|麻烦|开始|需要你).{0,12}(收藏|入库|保存|记住)"
+    r"|(把|将).{0,200}(收藏|入库|保存|记住|存进知识库|存到知识库|加入知识库|添加到知识库)"
+    r"|(收藏|入库|保存|记住|存进知识库|存到知识库|加入知识库|添加到知识库)"
+    r".{0,20}(链接|网页|文档|网址|url|这些|这个|该|以上)"
+    r"|(收藏|入库|保存|记住)\s+https?://"
+)
+_INGEST_NEGATION_PATTERN = re.compile(
+    r"(不要|别|不用|不需要|勿|禁止).{0,8}"
+    r"(收藏|入库|保存|记住|存进知识库|存到知识库)"
+)
+_INGEST_QUESTION_PATTERN = re.compile(
+    r"(如何|怎么|能否|可以).{0,8}(收藏|入库|保存|记住)"
+    r"|(收藏|入库|保存|记住).{0,4}(吗|么|呢|？|\?)"
+)
+_INGEST_EXPLANATION_PATTERN = re.compile(
+    r"(解释|说明|介绍|什么是|是什么|含义).{0,12}(收藏|入库|保存|记住)"
+    r"|(收藏|入库|保存|记住).{0,8}(是什么|含义|区别)"
+)
+_REFRESH_INTENT_MARKERS = ("刷新", "重新抓取", "重新入库", "重新收藏")
+_REFRESH_NEGATION_PATTERN = re.compile(
+    r"(不要|别|不用|不需要|勿|禁止).{0,8}(刷新|重新抓取|重新入库|重新收藏)"
+)
 
 
 class WatchRegistrar(Protocol):
@@ -110,15 +147,34 @@ class IngestUrlsTool:
         self,
         client: KnowledgeBasePort,
         *,
+        url_policy: UrlPolicy,
         max_urls: int,
         watch_registrar: WatchRegistrar | None = None,
     ) -> None:
         self._client = client
+        self._url_policy = url_policy
         self._max_urls = max_urls
         self._watch_registrar = watch_registrar
 
     async def __call__(self, args: IngestUrlsArgs, context: ToolContext) -> ToolOutcome:
-        urls, error = _normalize_urls(args.urls, max_urls=self._max_urls)
+        if not _explicit_ingest_requested(context.user_message):
+            return _error_outcome(
+                ErrorCode.INVALID_REQUEST,
+                "只有用户明确要求收藏或入库时才能调用此工具",
+                status="error",
+            )
+        if args.force_refresh and not _explicit_refresh_requested(context.user_message):
+            return _error_outcome(
+                ErrorCode.INVALID_REQUEST,
+                "只有用户明确要求刷新或重新抓取时才能强制刷新",
+                status="error",
+            )
+
+        urls, error = _validate_urls(
+            args.urls,
+            max_urls=self._max_urls,
+            url_policy=self._url_policy,
+        )
         if error is not None:
             return _error_outcome(ErrorCode.INVALID_REQUEST, error, status="error")
 
@@ -436,23 +492,48 @@ class SearchKnowledgeTool:
         )
 
 
-def _normalize_urls(urls: list[str], *, max_urls: int) -> tuple[list[str], str | None]:
+def _validate_urls(
+    urls: list[str], *, max_urls: int, url_policy: UrlPolicy
+) -> tuple[list[str], str | None]:
+    candidates = [(raw or "").strip() for raw in urls]
+    candidates = [url for url in candidates if url]
+    if not candidates:
+        return [], "请提供至少一个公开网页链接"
+    if len(candidates) > max_urls:
+        return [], f"单次最多提交 {max_urls} 个链接"
+
     cleaned: list[str] = []
-    for raw in urls:
-        url = (raw or "").strip()
-        if not url:
-            continue
+    for url in candidates:
         if len(url) > _MAX_URL_CHARS:
             return [], "单个链接过长"
-        if not url.lower().startswith(("http://", "https://")):
-            return [], "仅支持 HTTP/HTTPS 链接"
-        cleaned.append(url)
-    if not cleaned:
-        return [], "请提供至少一个公开网页链接"
-    if len(cleaned) > max_urls:
-        return [], f"单次最多提交 {max_urls} 个链接"
+        try:
+            cleaned.append(url_policy.validate(url).url)
+        except UrlPolicyError as exc:
+            return [], exc.message
     # 保留首次出现顺序，避免模型重复提交同一链接。
     return list(dict.fromkeys(cleaned)), None
+
+
+def _explicit_ingest_requested(message: str) -> bool:
+    text = " ".join(message.casefold().split())
+    if (
+        not text
+        or _INGEST_QUESTION_PATTERN.search(text)
+        or _INGEST_EXPLANATION_PATTERN.search(text)
+    ):
+        return False
+    if _INGEST_NEGATION_PATTERN.search(text):
+        return False
+    return _INGEST_REQUEST_PATTERN.search(text) is not None or any(
+        marker in text for marker in _INGEST_INTENT_MARKERS
+    )
+
+
+def _explicit_refresh_requested(message: str) -> bool:
+    text = " ".join(message.casefold().split())
+    if not text or _REFRESH_NEGATION_PATTERN.search(text):
+        return False
+    return any(marker in text for marker in _REFRESH_INTENT_MARKERS)
 
 
 def _idempotency_key(run_id: str, urls: list[str]) -> str:

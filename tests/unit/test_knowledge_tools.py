@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Any
+
+import pytest
+from tests.support.local_doc_server import PUBLIC_IP
 
 from learning_agent.domain.contracts import ToolContext
 from learning_agent.domain.errors import AppError, ErrorCode
+from learning_agent.tools.document.url_policy import UrlPolicy
 from learning_agent.tools.knowledge.tool import (
     GetIngestionArgs,
     GetIngestionTool,
@@ -32,9 +37,12 @@ class CountingAllocator:
         return f"S{self.count}"
 
 
-def make_context() -> ToolContext:
+def make_context(user_message: str = "请收藏这些链接到知识库") -> ToolContext:
     return ToolContext(
-        run_id="run-1", conversation_id="conv-1", allocator=NoopAllocator()
+        run_id="run-1",
+        conversation_id="conv-1",
+        allocator=NoopAllocator(),
+        user_message=user_message,
     )
 
 
@@ -43,6 +51,33 @@ def make_counting_context() -> ToolContext:
         run_id="run-1",
         conversation_id="conv-1",
         allocator=CountingAllocator(),
+    )
+
+
+def make_url_policy() -> UrlPolicy:
+    def resolve(host: str, port: int) -> tuple[str, ...]:
+        try:
+            return (str(ipaddress.ip_address(host)),)
+        except ValueError:
+            return (PUBLIC_IP,)
+
+    return UrlPolicy(
+        allowed_hosts=frozenset(),
+        allow_public_web=True,
+        resolver=resolve,
+    )
+
+
+def make_ingest_tool(
+    client: FakeKnowledgeClient,
+    *,
+    watch_registrar: FakeWatchRegistrar | None = None,
+) -> IngestUrlsTool:
+    return IngestUrlsTool(
+        client,
+        url_policy=make_url_policy(),
+        max_urls=20,
+        watch_registrar=watch_registrar,
     )
 
 
@@ -126,7 +161,7 @@ async def test_ingest_urls_dedupes_and_reports_started() -> None:
         }
     )
     registrar = FakeWatchRegistrar()
-    tool = IngestUrlsTool(client, max_urls=20, watch_registrar=registrar)
+    tool = make_ingest_tool(client, watch_registrar=registrar)
 
     outcome = await tool(
         IngestUrlsArgs(
@@ -163,16 +198,63 @@ async def test_ingest_urls_passes_force_refresh() -> None:
             "skipped": [],
         }
     )
-    tool = IngestUrlsTool(client, max_urls=20)
+    tool = make_ingest_tool(client)
 
     outcome = await tool(
         IngestUrlsArgs(urls=["https://example.com/a"], force_refresh=True),
-        make_context(),
+        make_context("请重新抓取并收藏这些链接到知识库"),
     )
 
     assert outcome.ok is True
     call = client.calls[0][1]
     assert call[3] is True
+
+
+@pytest.mark.parametrize(
+    ("user_message", "force_refresh"),
+    [
+        ("请解释这个链接", False),
+        ("不要收藏这个链接", False),
+        ("不要把它存进知识库", False),
+        ("如何收藏这个链接？", False),
+        ("这个链接值得收藏吗？", False),
+        ("请解释收藏是什么", False),
+        ("请收藏这个链接", True),
+    ],
+)
+async def test_ingest_urls_requires_explicit_user_intent(
+    user_message: str, force_refresh: bool
+) -> None:
+    client = FakeKnowledgeClient()
+    tool = make_ingest_tool(client)
+
+    outcome = await tool(
+        IngestUrlsArgs(urls=["https://example.com/a"], force_refresh=force_refresh),
+        make_context(user_message),
+    )
+
+    assert outcome.ok is False
+    assert outcome.error_code == ErrorCode.INVALID_REQUEST.value
+    assert client.calls == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/admin",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://user:password@example.com/doc",
+    ],
+)
+async def test_ingest_urls_applies_ssrf_policy(url: str) -> None:
+    client = FakeKnowledgeClient()
+    tool = make_ingest_tool(client)
+
+    outcome = await tool(IngestUrlsArgs(urls=[url]), make_context())
+
+    assert outcome.ok is False
+    assert outcome.error_code == ErrorCode.INVALID_REQUEST.value
+    assert client.calls == []
 
 
 async def test_ingest_urls_does_not_watch_terminal_job() -> None:
@@ -186,7 +268,7 @@ async def test_ingest_urls_does_not_watch_terminal_job() -> None:
         }
     )
     registrar = FakeWatchRegistrar(fail=True)
-    tool = IngestUrlsTool(client, max_urls=20, watch_registrar=registrar)
+    tool = make_ingest_tool(client, watch_registrar=registrar)
 
     outcome = await tool(IngestUrlsArgs(urls=["https://example.com/a"]), make_context())
 
@@ -204,9 +286,7 @@ async def test_ingest_urls_survives_watch_registration_failure() -> None:
             "skipped": [],
         }
     )
-    tool = IngestUrlsTool(
-        client, max_urls=20, watch_registrar=FakeWatchRegistrar(fail=True)
-    )
+    tool = make_ingest_tool(client, watch_registrar=FakeWatchRegistrar(fail=True))
 
     outcome = await tool(IngestUrlsArgs(urls=["https://example.com/a"]), make_context())
 
@@ -283,7 +363,7 @@ async def test_search_knowledge_maps_service_error() -> None:
 
 async def test_ingest_urls_rejects_non_http_without_calling_rag() -> None:
     client = FakeKnowledgeClient()
-    tool = IngestUrlsTool(client, max_urls=20)
+    tool = make_ingest_tool(client)
 
     outcome = await tool(IngestUrlsArgs(urls=["ftp://example.com/a"]), make_context())
 
@@ -296,7 +376,7 @@ async def test_ingest_urls_reports_unavailable() -> None:
     client = FakeKnowledgeClient(
         error=AppError(ErrorCode.KNOWLEDGE_BASE_UNAVAILABLE, "无法连接知识库服务")
     )
-    tool = IngestUrlsTool(client, max_urls=20)
+    tool = make_ingest_tool(client)
 
     outcome = await tool(IngestUrlsArgs(urls=["https://example.com/a"]), make_context())
 

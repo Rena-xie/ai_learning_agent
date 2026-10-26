@@ -23,3 +23,4 @@ class ToolContext:
     run_id: str
     conversation_id: str
     allocator: SourceAllocator
+    user_message: str = ""

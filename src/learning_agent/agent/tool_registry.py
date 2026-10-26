@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
@@ -16,7 +16,7 @@ from learning_agent.domain.contracts import ToolContext
 from learning_agent.domain.entities import DocumentContent, ToolOutcome, ToolSource
 from learning_agent.domain.enums import ToolCallStatus
 from learning_agent.domain.errors import AppError, ErrorCode
-from learning_agent.observability.logging import redact_url
+from learning_agent.observability.logging import redact_mapping, redact_url
 
 logger = logging.getLogger(__name__)
 
@@ -298,15 +298,24 @@ def _summarize_arguments(arguments: str) -> str:
     try:
         raw = json.loads(arguments or "{}")
     except json.JSONDecodeError:
-        return arguments[:80]
+        return "<invalid-json>"
     if isinstance(raw, dict):
-        sanitized = {
-            str(key): redact_url(str(value)) if isinstance(value, str) else value
-            for key, value in raw.items()
-        }
+        sanitized = _redact_argument_value(redact_mapping(raw))
         text = json.dumps(sanitized, ensure_ascii=False)
     else:
         text = arguments
     if len(text) > _MAX_SUMMARY_CHARS:
         return text[:_MAX_SUMMARY_CHARS] + "…"
     return text
+
+
+def _redact_argument_value(value: object) -> object:
+    """递归遮蔽参数字典和列表中的 URL 查询敏感项。"""
+
+    if isinstance(value, str):
+        return redact_url(value)
+    if isinstance(value, Mapping):
+        return {str(key): _redact_argument_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_argument_value(item) for item in value]
+    return value

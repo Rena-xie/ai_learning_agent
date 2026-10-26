@@ -15,10 +15,10 @@
 
 | 威胁 | 缓解措施 | 证据 |
 |---|---|---|
-| SSRF：抓取内网、云元数据或本机地址 | 精确域名白名单（空配置即拒绝）、仅 http/https、拒绝 URL 凭据、端口限制、DNS 解析结果必须全为公网地址 | `tools/document/url_policy.py`；`tests/unit/test_url_policy.py` |
+| SSRF：抓取内网、云元数据或本机地址 | 文档与知识库入库共用 URL 策略：精确域名白名单、仅 http/https、拒绝 URL 凭据、端口限制、DNS 解析结果必须全为公网地址 | `tools/document/url_policy.py`；`tools/knowledge/tool.py`；`tests/unit/test_url_policy.py`、`tests/unit/test_knowledge_tools.py` |
 | 重定向把请求带到内网或未允许域名 | 关闭自动重定向，逐跳重新执行完整策略校验，并限制跳数 | `tools/document/fetcher.py`；`tests/integration/test_document_pipeline.py` |
 | DNS rebinding：解析与建连之间目标被替换 | 连接建立后读取真实对端地址，非公网或无法确认时按 `ssrf_target_blocked` 拒绝 | 同上（`test_peer_address_check_blocks_local_endpoint`） |
-| 提示词注入：文档内嵌指令索取密钥、要求执行命令或越权访问 | 文档一律标注为不可信参考内容；系统提示明确忽略文档内指令；工具静态注册、参数 Schema 校验；来源编号与链接由服务端校验 | `agent/prompts.py`、`agent/tool_registry.py`、`agent/citation_validator.py`；`tests/integration/test_prompt_injection.py` |
+| 提示词注入：文档内嵌指令索取密钥、要求执行命令或越权访问 | 外部文档作为普通不可信数据而非 system 消息；写工具校验当前用户是否明确要求收藏或刷新；工具静态注册、参数 Schema 校验；来源编号与链接由服务端校验 | `agent/context_builder.py`、`agent/prompts.py`、`agent/tool_registry.py`、`tools/knowledge/tool.py`；`tests/unit/test_context_builder.py`、`tests/unit/test_knowledge_tools.py`、`tests/integration/test_prompt_injection.py` |
 | 存储型链接注入：RSS/Atom 提供 `javascript:`、`data:` 或其他危险 URL | 解析和持久化前只允许 HTTP(S)；API 输出复验；浏览器 `safe-url.js` 再校验；历史非法 `push_items` 隔离 | `domain/urls.py`、`digest/rss.py`、`web/safe-url.js`；`tests/unit/test_external_urls.py`、`tests/unit/test_digest_rss.py`、`tests/frontend/test_safe_url.js` |
 | 脚本注入或同源 API 滥用 | UI 与静态资源设置限制性 CSP；禁止内联脚本、对象、框架嵌入和跨源连接；补充 nosniff 与 no-referrer | `api/security_headers.py`；`tests/integration/test_web_ui.py` |
 | RSS/Atom 内容中的恶意指令 | Feed 仅作为标题、摘要和链接数据，不进入模型系统提示；V3 当前不调用模型生成 Digest 摘要 | `digest/rss.py`、`application/digest_service.py` |
@@ -26,9 +26,9 @@
 | 飞书响应正文泄露 | 投递记录只保存业务错误、HTTP 状态类别、超时或网络失败，不保存响应正文 | `digest/feishu.py`；`tests/unit/test_feishu.py` |
 | 知识库证据注入：已入库文档包含恶意指令 | 知识库证据与网页正文一样按不可信参考内容处理；来源由服务端登记，模型无法伪造 | `agent/prompts.py`、`tools/knowledge/*`；`tests/integration/test_knowledge_injection.py` |
 | 恶意工具参数（`file://`、localhost、异常端口、超长参数） | 参数先过 Pydantic Schema，再到 URL 策略；未知工具与非法参数不执行任何副作用 | `tests/unit/test_tool_registry.py`、`tests/integration/test_prompt_injection.py` |
-| 密钥泄露到源码、日志或响应 | 密钥仅从环境变量注入；`.env` 被忽略；日志脱敏（URL 查询参数、敏感字段）；错误响应只含安全文案 | `observability/logging.py`、`api/errors.py`；`tests/integration/test_security_boundaries.py` |
+| 密钥泄露到源码、日志或响应 | 密钥仅从环境变量注入；`.env` 被忽略；工具参数递归遮蔽 URL 查询参数和敏感字段；非法 JSON 不落原文；错误响应只含安全文案 | `observability/logging.py`、`agent/tool_registry.py`、`api/errors.py`；`tests/unit/test_tool_registry.py`、`tests/integration/test_security_boundaries.py` |
 | 资源耗尽：超大响应、无限循环、超长上下文 | 响应体积上限（含 Content-Length 预检）、获取/模型/运行超时、最大模型轮数与工具调用次数、上下文 Token 预算与截断标记 | `tools/document/fetcher.py`、`agent/runtime.py`、`agent/context_builder.py`；`tests/integration/test_runtime_limits.py`、`tests/integration/test_model_failures.py` |
-| 进程中断导致对话被永久锁定 | 启动时把遗留的 pending/running 运行标记为 `run_interrupted` | `persistence/repositories.py`；`tests/integration/test_startup_recovery.py` |
+| 进程中断或最终落库失败导致对话被锁定 | 最终结果保存失败时把运行转为失败；启动时把遗留 pending/running 运行标记为 `run_interrupted` | `agent/runtime.py`、`persistence/repositories.py`；`tests/unit/test_runtime_persistence_failure.py`、`tests/integration/test_startup_recovery.py` |
 | 数据越权：猜测对话 ID 读取他人数据 | v1.0 为单用户本地应用，接口只按对话 ID 返回该对话数据；远程访问必须经认证代理/VPN | `api/v1/routes/*`；`tests/integration/test_conversations_api.py` |
 | 数据库损坏或误删 | Alembic 管理 Schema；备份/恢复脚本带完整性校验与行数比对 | `scripts/backup_database.py`、`scripts/restore_database.py`；`tests/integration/test_backup_restore.py` |
 | 依赖供应链风险 | 依赖版本由 `uv.lock` 锁定；新增依赖需评估维护状态与必要性 | `pyproject.toml`、`uv.lock` |

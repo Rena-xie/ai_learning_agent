@@ -81,6 +81,7 @@ def test_document_is_truncated_and_marked() -> None:
         if message.content and "[S1]" in message.content
     )
     assert "（内容已截断）" in documents_message.content
+    assert documents_message.role == "user"
     assert len(documents_message.content) < 8_000
 
 

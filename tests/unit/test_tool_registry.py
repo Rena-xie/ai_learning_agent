@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
-from learning_agent.agent.tool_registry import ToolExecutionState, ToolRegistry
+from learning_agent.agent.tool_registry import (
+    ToolExecutionState,
+    ToolRegistry,
+    _summarize_arguments,
+)
 from learning_agent.domain.contracts import ToolContext
 from learning_agent.domain.entities import ToolOutcome
 from learning_agent.domain.errors import AppError, ErrorCode
@@ -130,3 +134,15 @@ async def test_enforces_call_limit() -> None:
             state=state,
         )
     assert excinfo.value.code is ErrorCode.TOOL_LIMIT_EXCEEDED
+
+
+def test_argument_summary_redacts_nested_urls_and_invalid_json() -> None:
+    summary = _summarize_arguments(
+        '{"urls": ["https://example.com/doc?token=DEMO_SECRET_123"],'
+        ' "nested": {"signature": "DEMO_SIGNATURE_456"}}'
+    )
+
+    assert "DEMO_SECRET_123" not in summary
+    assert "DEMO_SIGNATURE_456" not in summary
+    assert "***" in summary
+    assert _summarize_arguments("not-json token=DEMO_SECRET_789") == "<invalid-json>"

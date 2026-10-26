@@ -149,7 +149,7 @@ class ContextBuilder:
         if included_documents:
             document_messages.append(
                 ChatMessage(
-                    role="system", content=build_documents_message(included_documents)
+                    role="user", content=build_documents_message(included_documents)
                 )
             )
 

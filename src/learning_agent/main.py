@@ -155,6 +155,7 @@ def create_app(
             [
                 IngestUrlsTool(
                     active_knowledge_client,
+                    url_policy=policy,
                     max_urls=resolved.knowledge_base_max_urls,
                     watch_registrar=ingestion_watcher,
                 ),

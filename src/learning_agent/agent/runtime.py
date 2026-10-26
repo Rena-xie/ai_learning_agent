@@ -216,14 +216,36 @@ class AgentRuntime:
 
             duration_ms = int((time.perf_counter() - started_perf) * 1000)
             usage = self._apply_cost(usage)
-            await self._repositories.complete_run(
-                run_id=run_id,
-                conversation_id=conversation_id,
-                content=content,
-                usage=usage,
-                model_name=model_name,
-                duration_ms=duration_ms,
-            )
+            try:
+                await self._repositories.complete_run(
+                    run_id=run_id,
+                    conversation_id=conversation_id,
+                    content=content,
+                    usage=usage,
+                    model_name=model_name,
+                    duration_ms=duration_ms,
+                )
+            except AppError as exc:
+                return await self._finish_failure(
+                    run_id=run_id,
+                    exc=exc,
+                    started_perf=started_perf,
+                    usage=usage,
+                    model_name=model_name,
+                )
+            except Exception as exc:  # noqa: BLE001 - 最终落库失败必须结束运行
+                logger.exception("run_completion_persist_failed")
+                return await self._finish_failure(
+                    run_id=run_id,
+                    exc=AppError(
+                        ErrorCode.PERSISTENCE_ERROR,
+                        "本次运行结果保存失败，请重试",
+                        detail=type(exc).__name__,
+                    ),
+                    started_perf=started_perf,
+                    usage=usage,
+                    model_name=model_name,
+                )
             logger.info(
                 "run_completed",
                 extra={
@@ -335,6 +357,7 @@ class AgentRuntime:
                             run_id=run_id,
                             conversation_id=conversation_id,
                             allocator=registry,
+                            user_message=user_message,
                         ),
                         state=state,
                     )
