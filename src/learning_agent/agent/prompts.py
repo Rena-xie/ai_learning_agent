@@ -3,8 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
+from typing import Protocol
 
-from learning_agent.agent.context_builder import DocumentContext
+
+class PromptDocument(Protocol):
+    """Prompt 构造所需的只读文档字段。"""
+
+    source_id: str
+    title: str
+    fetched_at: datetime
+    text: str
+    truncated: bool
+
 
 PROMPT_VERSION = "v3"
 
@@ -59,7 +70,7 @@ _SYSTEM_PROMPT_LINES = (
 SYSTEM_PROMPT = "\n".join(_SYSTEM_PROMPT_LINES)
 
 
-def build_documents_message(documents: Sequence[DocumentContext]) -> str:
+def build_documents_message(documents: Sequence[PromptDocument]) -> str:
     """构造“已获取文档”参考资料消息（明确标注为不可信内容）。"""
 
     lines = [

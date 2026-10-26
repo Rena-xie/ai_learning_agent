@@ -42,6 +42,18 @@ def make_settings(tmp_path):
     )
 
 
+def test_security_headers_middleware_is_installed_once(tmp_path) -> None:
+    app = create_app(make_settings(tmp_path))
+    installations = [
+        middleware
+        for middleware in app.user_middleware
+        if getattr(middleware.kwargs.get("dispatch"), "__name__", None)
+        == "_security_headers"
+    ]
+
+    assert len(installations) == 1
+
+
 async def test_static_ui_is_served(tmp_path) -> None:
     app = create_app(make_settings(tmp_path))
     async with running_client(app) as client:

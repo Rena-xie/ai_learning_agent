@@ -214,8 +214,6 @@ Digest 条目
 - 部分 API 路由直接访问 `V3Store` 或 `AsyncRepositories`；
 - `V3Store` 同时承载 Digest、偏好和画像数据；
 - 部分异步路由仍直接调用同步 SQLite Store；
-- `agent.context_builder` 与 `agent.prompts` 存在一个模块级循环依赖；
-- 安全响应头在应用装配时被重复安装一次。
 
 以上问题不改变当前架构方向，只通过小范围任务逐步修正，不进行全量重构。
 

@@ -288,7 +288,6 @@ def create_app(
     app.state.ingestion_watcher = ingestion_watcher
     register_exception_handlers(app)
     install_security_headers(app)
-    install_security_headers(app)
     app.include_router(health.router)
     app.include_router(conversations.router)
     app.include_router(messages.router)

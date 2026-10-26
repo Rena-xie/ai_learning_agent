@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from learning_agent.agent.prompts import build_documents_message
 from learning_agent.domain.errors import AppError, ErrorCode
 from learning_agent.models.base import ChatMessage
 
@@ -146,8 +147,6 @@ class ContextBuilder:
                 )
             )
         if included_documents:
-            from learning_agent.agent.prompts import build_documents_message
-
             document_messages.append(
                 ChatMessage(
                     role="system", content=build_documents_message(included_documents)
