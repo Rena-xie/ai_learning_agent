@@ -13,7 +13,7 @@ RAG 不可用时文档阅读链路仍可正常工作。
 - **完整 Agent 链路**：模型 ↔ 工具循环、真实抓取/检索、上下文预算、服务端引用校验，失败如实报告。
 - **长期知识库**：`ingest_urls` 异步入库、watcher 完成通知、`search_knowledge` 证据检索，
   来源标记为 `knowledge_base`。
-- **每日 AI 资讯**：可信来源注册表、RSS/Atom 增量抓取、去重、筛选、Digest 生成和飞书推送；
+- **每日 AI 资讯**：可信来源注册表、RSS/Atom 抓取、去重、筛选、Digest 生成和飞书推送；
   采用启动触发，不依赖固定钟点。
 - **学习闭环**：Digest 一键生成带来源笔记，自动生成自测题和闪卡，按复习结果维护下次复习时间与薄弱主题。
 - **跨对话学习画像**：记录主题、薄弱概念及其证据，支持开关、主题状态调整、概念校正和清空。
@@ -96,7 +96,7 @@ tests/  evals/  migrations/  scripts/  docs/
 
 ## V3.3.1 当前范围
 
-V3 系列已完成：
+V3 功能代码与自动化验证已完成；真实外部集成仍需在发布环境验收：
 
 - `v3.3.1` 安全修订：RSS/Atom 链接仅允许 HTTP(S)，历史非法条目隔离，Web UI 增加 CSP。
 - 默认来源注册表、RSS/Atom 抓取、去重、筛选、Top N 和启动触发。
@@ -110,10 +110,10 @@ V3 系列已完成：
 当前已知边界：
 
 - RAG 仍是一个总库，Agent 侧仅提供 `default` collection 检索边界；真正的主题/collection 过滤需要 RAG 项目后续支持。
-- 笔记、自测题和闪卡当前采用基于 Digest 标题与摘要的确定性生成，后续可切换为模型生成。
-- Digest 当前使用 RSS/Atom 自带摘要；模型批量摘要、发送前预览、反馈排序、条件请求、
-  robots.txt 和全局紧急停止列为 V3.4。
-- 邮件、Telegram 和 V4 的长期记忆/上下文工程不属于 V3。
+- 笔记、自测题和闪卡采用基于 Digest 标题与来源摘要的确定性生成。
+- Digest 当前使用 RSS/Atom 自带摘要；模型批量摘要、发送前预览、反馈排序和条件请求
+  不在当前 v3 范围。
+- 邮件、Telegram、长期记忆生命周期和画像自动注入不属于 v3。
 
 > API 文档：启动后访问 `/docs`；健康检查 `/health/live`、`/health/ready`。
 
@@ -176,6 +176,8 @@ RAG 数据按其项目文档单独备份。
 
 V3.3.1 发布前的自动化与手工检查见
 [`docs/release-checklist-v3.3.md`](docs/release-checklist-v3.3.md)。
+
+功能完成后的收口任务见 [`docs/v3-closure-plan.md`](docs/v3-closure-plan.md)。
 
 ## 许可
 
