@@ -42,6 +42,12 @@ try {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     Wait-Health -Deadline $deadline
 
+    # 显式触发当天任务，兼容 DIGEST_TRIGGER=manual；已有完成结果时不会重复推送。
+    Invoke-RestMethod `
+        -Method Post `
+        -Uri "http://127.0.0.1:8000/api/v1/digests/run?force=false" `
+        -TimeoutSec $TimeoutSeconds | Out-Null
+
     $digest = $null
     while ((Get-Date) -lt $deadline) {
         try {

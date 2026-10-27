@@ -221,9 +221,9 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 | 全量离线测试 | 266 passed，12 deselected |
 | Ruff | Lint 与格式检查通过 |
 
-## v3.3.2 阶段 C：真实环境验收（2026-10-26）
+## v3.3.2 阶段 C：真实环境验收（2026-10-26 ~ 2026-10-27）
 
-**状态：部分完成。Docker 受当前环境配置阻塞。**
+**状态：完成。**
 
 已使用隔离验收数据库和本机真实 RAG 服务完成：
 
@@ -232,15 +232,20 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 | 真实模型文档问答 | 通过；FastAPI 官方文档，1 个来源，正文含 `[S1]` |
 | 真实 RAG 入库 | 通过；1/1 成功，完成后写入 `ingestion_notice` |
 | 真实知识库检索 | 通过；7 个证据来源，正文引用 `[S2]`–`[S9]` |
-| 真实 RSS | 通过；Digest 完成并收录 3 条资讯 |
+| 真实 RSS | 通过；原生验收收录 3 条，Docker 每日任务收录 4 条 |
 | Digest 幂等 | 通过；连续执行保持同一 Digest ID |
 | 重启持久化 | 通过；重启前后消息数一致，Digest 仍为 completed |
 | SQLite 备份恢复 | 通过；完整性和表行数一致 |
 | 真实 Feishu 推送 | 通过；修复签名算法后消息 delivered，Digest 重试保持同一 ID |
-| Docker Compose / 每日任务脚本 | 未执行；当前环境没有 Docker 命令 |
+| Docker Compose / 每日任务脚本 | 通过；镜像构建、健康检查、容器 RAG 问答、重启持久化和自动关闭均成功 |
 
 真实 RSS 执行期间有 3 个默认来源失败：Hugging Face 超时、LangChain Feed 被 URL
 策略拒绝、Microsoft Feed 返回 HTTP 错误；其余来源成功生成 Digest。
 
-本次启动的临时 RAG 服务已关闭。验收数据库及备份保留在 `data/stage-c-acceptance*`，
-用于后续复验；它们被 Git 忽略，不会提交。
+Docker Agent 通过宿主 RAG 完成知识库问答，返回 5 个来源和 `[S1]`–`[S5]` 引用；
+容器重启后对话仍存在。每日任务脚本生成 4 条资讯，飞书投递状态为 `delivered`，
+随后正确执行 `docker compose down`。
+
+为完成镜像构建，Docker Desktop 中失效的手动代理已切换为系统设置，原配置备份在
+临时目录 `docker-settings-store-before-stage-c.json`。验收数据库及备份保留在
+`data/stage-c-acceptance*`，被 Git 忽略，不会提交。
