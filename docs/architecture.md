@@ -1,6 +1,6 @@
 # AI Learning Agent v3 架构设计
 
-> 版本：3.3.1
+> 版本：3.3.2
 >
 > 定位：单用户、本机运行的个人 AI 学习助手
 >
@@ -257,5 +257,5 @@ Digest 条目
 
 - [威胁模型](threat-model.md)
 - [验收记录](verification-log.md)
-- [发布检查清单](release-checklist-v3.3.md)
+- [发布检查清单](release-checklist-v3.3.2.md)
 - [v3.3.2 收口计划](v3-closure-plan.md)

@@ -249,3 +249,18 @@ Docker Agent 通过宿主 RAG 完成知识库问答，返回 5 个来源和 `[S1
 为完成镜像构建，Docker Desktop 中失效的手动代理已切换为系统设置，原配置备份在
 临时目录 `docker-settings-store-before-stage-c.json`。验收数据库及备份保留在
 `data/stage-c-acceptance*`，被 Git 忽略，不会提交。
+
+## v3.3.2 阶段 D：发布收口（2026-10-27）
+
+**状态：完成。**
+
+| 检查项 | 结果 |
+|---|---|
+| 版本一致性 | `pyproject.toml`、锁文件、包版本、FastAPI 版本和 README 均为 3.3.2 |
+| 离线测试 | 266 passed，12 deselected |
+| Ruff | Lint 与格式检查通过 |
+| 前端 | 3 个脚本语法检查通过，安全 URL 单测 2 passed |
+| 锁文件 | `uv lock --check` 通过 |
+| 最终 Docker 镜像 | 构建成功，OpenAPI 版本 3.3.2 |
+| 最终容器健康 | database、model、knowledge_base 均为 ok |
+| 发布清理 | 最终验证容器已执行 `docker compose down` |

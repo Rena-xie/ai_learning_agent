@@ -1,6 +1,6 @@
-# 威胁模型（v3.3.1）
+# 威胁模型（v3.3.2）
 
-适用范围：AI Learning Agent v3.3.1（单用户、本地运行、单 Agent Runtime）。
+适用范围：AI Learning Agent v3.3.2（单用户、本地运行、单 Agent Runtime）。
 默认只绑定 `127.0.0.1`；远程访问必须经过认证的 HTTPS 反向代理或 VPN。
 
 ## 资产

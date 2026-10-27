@@ -269,7 +269,7 @@ def create_app(
                 await active_notifier.close()
             engine.dispose()
 
-    app = FastAPI(title="AI Learning Agent", version="3.3.1", lifespan=lifespan)
+    app = FastAPI(title="AI Learning Agent", version="3.3.2", lifespan=lifespan)
     app.state.settings = resolved
     app.state.repositories = repositories
     app.state.async_repositories = async_repositories

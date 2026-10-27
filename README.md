@@ -5,7 +5,7 @@
 
 **Python 3.12 · FastAPI · SQLAlchemy / SQLite · Alembic · OpenAI 兼容 API · Docker · pytest / ruff / GitHub Actions**
 
-单用户、本机运行、模块化单体（当前版本 v3.3.1）。知识库是可选外部依赖；
+单用户、本机运行、模块化单体（当前版本 v3.3.2）。知识库是可选外部依赖；
 RAG 不可用时文档阅读链路仍可正常工作。
 
 ## 项目亮点
@@ -94,10 +94,11 @@ tests/  evals/  migrations/  scripts/  docs/
 | 安全 | 输入/资源上限、幂等入库、注入防护、密钥与日志脱敏；RAG 不可用可降级 |
 | 可观测 | JSON 日志、`run_id`、成功率/耗时/Token/成本、知识库失败率与 watch 积压 |
 
-## V3.3.1 当前范围
+## V3.3.2 当前范围
 
-V3 功能代码与自动化验证已完成；真实外部集成仍需在发布环境验收：
+V3 功能代码、自动化和真实外部环境验收均已完成：
 
+- `v3.3.2` 收口：飞书签名修复、安全边界加固、Docker 与真实外部链路验收。
 - `v3.3.1` 安全修订：RSS/Atom 链接仅允许 HTTP(S)，历史非法条目隔离，Web UI 增加 CSP。
 - 默认来源注册表、RSS/Atom 抓取、去重、筛选、Top N 和启动触发。
 - 飞书自定义机器人 Webhook、投递重试、补发和投递状态记录。
@@ -174,8 +175,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_daily_digest.ps1
 **备份**：`uv run python -m scripts.backup_database --output backups/app.db`；
 RAG 数据按其项目文档单独备份。
 
-V3.3.1 发布前的自动化与手工检查见
-[`docs/release-checklist-v3.3.md`](docs/release-checklist-v3.3.md)。
+V3.3.2 发布前的自动化与手工检查见
+[`docs/release-checklist-v3.3.2.md`](docs/release-checklist-v3.3.2.md)。
 
 功能完成后的收口任务见 [`docs/v3-closure-plan.md`](docs/v3-closure-plan.md)。
 
