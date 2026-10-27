@@ -7,7 +7,14 @@ import json
 import httpx
 import pytest
 
-from learning_agent.digest.feishu import FeishuNotifier
+from learning_agent.digest.feishu import FeishuNotifier, _signature
+
+
+def test_signature_matches_feishu_custom_bot_algorithm() -> None:
+    assert (
+        _signature("1700000000", "test-secret")
+        == "mbm4Y4oluIPQ00qlBIhX8vAZ0EKv3nw0LuTb91jPL84="
+    )
 
 
 @pytest.mark.asyncio

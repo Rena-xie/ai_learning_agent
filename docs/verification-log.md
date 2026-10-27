@@ -218,12 +218,12 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 | 参数脱敏 | 递归处理列表和字典中的 URL 查询参数及敏感字段 |
 | Run 状态 | 最终结果落库失败时转为失败，不再保留活动状态 |
 | 定向测试 | 41 passed |
-| 全量离线测试 | 265 passed，12 deselected |
+| 全量离线测试 | 266 passed，12 deselected |
 | Ruff | Lint 与格式检查通过 |
 
 ## v3.3.2 阶段 C：真实环境验收（2026-10-26）
 
-**状态：部分完成。Feishu 与 Docker 受当前环境配置阻塞。**
+**状态：部分完成。Docker 受当前环境配置阻塞。**
 
 已使用隔离验收数据库和本机真实 RAG 服务完成：
 
@@ -236,7 +236,7 @@ v1.0 的真实模型与评估结果保留在本文上方的记录与 `evals/resu
 | Digest 幂等 | 通过；连续执行保持同一 Digest ID |
 | 重启持久化 | 通过；重启前后消息数一致，Digest 仍为 completed |
 | SQLite 备份恢复 | 通过；完整性和表行数一致 |
-| 真实 Feishu 推送 | 未执行；`FEISHU_ENABLED=false` 且未配置 Webhook |
+| 真实 Feishu 推送 | 通过；修复签名算法后消息 delivered，Digest 重试保持同一 ID |
 | Docker Compose / 每日任务脚本 | 未执行；当前环境没有 Docker 命令 |
 
 真实 RSS 执行期间有 3 个默认来源失败：Hugging Face 超时、LangChain Feed 被 URL
